@@ -36,6 +36,16 @@ pub struct PrivaxyServer {
 
 pub async fn start_privaxy() -> PrivaxyServer {
     let ip = [127, 0, 0, 1];
+    match env::var("PRIVAXY_IP_ADDRESS") {
+        Ok(val) => {
+            // Parse the IP address from the environment variable string
+            ip = parse_ip_address(&val);
+        }
+        Err(_) => {
+            // Set a default IP address
+            ip = [127, 0, 0, 1];
+        }
+    }
 
     // We use reqwest instead of hyper's client to perform most of the proxying as it's more convenient
     // to handle compression as well as offers a more convenient interface.

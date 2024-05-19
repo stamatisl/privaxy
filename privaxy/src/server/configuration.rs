@@ -8,7 +8,7 @@ use openssl::{
     x509::X509,
 };
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{collections::BTreeSet, time::Duration};
 use thiserror::Error;
 use tokio::sync::{self, mpsc::Sender};
@@ -56,9 +56,7 @@ impl Filter {
     async fn update(&self, http_client: &reqwest::Client) -> ConfigurationResult<String> {
         log::debug!("Updating filter: {}", self.title);
 
-        let home_directory = get_home_directory()?;
-        let configuration_directory = home_directory.join(CONFIGURATION_DIRECTORY_NAME);
-        let filters_directory = configuration_directory.join(FILTERS_DIRECTORY_NAME);
+        let filters_directory =get_filter_directory();
 
         fs::create_dir_all(&filters_directory).await?;
 
@@ -70,11 +68,8 @@ impl Filter {
     }
 
     pub async fn get_contents(&self, http_client: &reqwest::Client) -> ConfigurationResult<String> {
-        let filter_path = get_home_directory()?
-            .join(CONFIGURATION_DIRECTORY_NAME)
-            .join(FILTERS_DIRECTORY_NAME)
+        let filter_path = get_filter_directory()
             .join(&self.file_name);
-
         match fs::read(filter_path).await {
             Err(err) => {
                 if err.kind() == std::io::ErrorKind::NotFound {
@@ -125,8 +120,8 @@ pub struct Configuration {
 pub enum ConfigurationError {
     #[error("an error occured while trying to deserialize configuration file")]
     DeserializeError(#[from] toml::de::Error),
-    #[error("this user home directory not found")]
-    HomeDirectoryNotFound,
+    #[error("this directory was not found")]
+    DirectoryNotFound,
     #[error("file system error")]
     FileSystemError(#[from] std::io::Error),
     #[error("data store disconnected")]
@@ -139,8 +134,7 @@ pub enum ConfigurationError {
 
 impl Configuration {
     pub async fn read_from_home(http_client: reqwest::Client) -> ConfigurationResult<Self> {
-        let home_directory = get_home_directory()?;
-        let configuration_directory = home_directory.join(CONFIGURATION_DIRECTORY_NAME);
+        let configuration_directory = get_config_directory();
         let configuration_file_path = configuration_directory.join(CONFIGURATION_FILE_NAME);
 
         if let Err(err) = fs::metadata(&configuration_directory).await {
@@ -176,8 +170,7 @@ impl Configuration {
     }
 
     pub async fn save(&self) -> ConfigurationResult<()> {
-        let home_directory = get_home_directory()?;
-        let configuration_directory = home_directory.join(CONFIGURATION_DIRECTORY_NAME);
+        let configuration_directory = get_config_directory();
         let configuration_file_path = configuration_directory.join(CONFIGURATION_FILE_NAME);
 
         let configuration_serialized = toml::to_string_pretty(&self).unwrap();
@@ -324,8 +317,38 @@ async fn get_default_filters(
 fn get_home_directory() -> ConfigurationResult<PathBuf> {
     match home_dir() {
         Some(home_directory) => Ok(home_directory),
-        None => Err(ConfigurationError::HomeDirectoryNotFound),
+        None => Err(ConfigurationError::DirectoryNotFound),
     }
+}
+
+fn get_base_directory() -> ConfigurationResult<PathBuf> {
+    let base_directory: PathBuf =  match env::var("PRIVAXY_BASE_PATH") {
+        Ok(val) => PathBuf::from(&val),
+        // Assume home directory
+        Err(_) => get_home_directory()?
+    };
+    match Path::exists(&base_directory) {
+        Ok => Ok(base_directory),
+        Err(_) => Err(ConfigurationError::DirectoryNotFound)
+    }
+}
+ 
+fn get_config_directory() -> PathBuf {
+    let config_dir: PathBuf =  match env::var("PRIVAXY_CONFIG_PATH") {
+        Ok(val) => PathBuf::from(&val),
+        // Assume default directory
+        Err(_) => PathBuf::from(CONFIGURATION_DIRECTORY_NAME)
+    };
+    return get_base_directory()?.join(config_dir);
+}
+
+fn get_filter_directory() -> PathBuf {
+    let filter_dir: PathBuf =  match env::var("PRIVAXY_FILTER_PATH") {
+        Ok(val) => PathBuf::from(&val),
+        // Assume home directory
+        Err(_) => FILTERS_DIRECTORY_NAME
+    };
+    return get_base_directory()?.join(filter_dir);
 }
 
 async fn get_filter(
