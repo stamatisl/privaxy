@@ -13,7 +13,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use tokio::sync::broadcast;
-
+use include_dir::{include_dir, Dir};
+mod web_gui;
 pub mod blocker;
 mod blocker_utils;
 mod ca;
@@ -22,6 +23,7 @@ pub mod configuration;
 pub mod events;
 mod proxy;
 pub mod statistics;
+pub const WEBAPP_FRONTEND_DIR: Dir<'_> = include_dir!("web_frontend/dist");
 
 #[derive(Debug, Clone)]
 pub struct PrivaxyServer {
@@ -187,18 +189,35 @@ pub async fn start_privaxy() -> PrivaxyServer {
             }))
         }
     });
-
     let proxy_server_addr = SocketAddr::from((ip, 8100));
+
 
     let server = Server::bind(&proxy_server_addr)
         .http1_preserve_header_case(true)
         .http1_title_case_headers(true)
         .tcp_keepalive(Some(Duration::from_secs(600)))
         .serve(make_service);
+    log::info!("Proxy available at http://{}", proxy_server_addr);
+    
+    let web_gui_static_files_server_addr = SocketAddr::from((ip, 8000));
+    let web_gui_server_addr = SocketAddr::from((ip, 8200));
+
+    log::info!(
+        "Web gui available at http://{}",
+        web_gui_static_files_server_addr
+    );
+
+    web_gui::start_web_gui_static_files_server(
+        web_gui_static_files_server_addr,
+        web_gui_server_addr,
+    );
+    log::info!(
+        "Web gui api server available at http://{}",
+        web_gui_server_addr
+    );
 
     tokio::spawn(server);
 
-    log::info!("Proxy available at http://{}", proxy_server_addr);
 
     PrivaxyServer {
         ca_certificate_pem,

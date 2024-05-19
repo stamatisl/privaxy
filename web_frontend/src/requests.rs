@@ -1,8 +1,10 @@
 use futures::future::{AbortHandle, Abortable};
+use crate::get_api_host;
 use futures::StreamExt;
 use serde::Deserialize;
 use tauri_sys::event;
 use wasm_bindgen_futures::spawn_local;
+use reqwasm::websocket::futures::WebSocket;
 use yew::{html, Component, Context, Html};
 
 const MAX_REQUESTS_SHOWN: usize = 500;
@@ -17,8 +19,8 @@ pub struct Message {
 
 pub struct Requests {
     messages: Vec<Message>,
-    abort_handle: AbortHandle,
-}
+    ws_abort_handle: AbortHandle,
+  }
 
 impl Component for Requests {
     type Message = Message;
@@ -26,7 +28,7 @@ impl Component for Requests {
 
     fn create(ctx: &Context<Self>) -> Self {
         let message_callback = ctx.link().callback(|message: Message| message);
-
+        let ws = WebSocket::open(&format!("ws://{}/events", get_api_host())).unwrap();
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         let future = Abortable::new(
             async move {
@@ -43,7 +45,7 @@ impl Component for Requests {
         });
 
         Self {
-            abort_handle,
+            ws_abort_handle: abort_handle,
             messages: Vec::new(),
         }
     }
@@ -128,6 +130,6 @@ impl Component for Requests {
     }
 
     fn destroy(&mut self, _ctx: &Context<Self>) {
-        self.abort_handle.abort()
+        self.ws_abort_handle.abort()
     }
 }

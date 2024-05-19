@@ -12,6 +12,13 @@ mod settings;
 mod settings_textarea;
 mod submit_banner;
 
+static mut API_HOST: String = String::new();
+
+pub fn get_api_host() -> &'static str {
+    // `API_HOST` is only mutated at app start.
+    unsafe { API_HOST.as_str() }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Routable)]
 enum Route {
     #[at("/")]
@@ -45,6 +52,8 @@ fn not_found() -> Html {
     </div>
      }
 }
+
+
 
 fn switch(route: &Route) -> Html {
     fn get_classes(current_route: Route, for_route_link: Route) -> Classes {
