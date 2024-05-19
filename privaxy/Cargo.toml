@@ -52,3 +52,4 @@ reqwest = { version = "0.11.13", features = [
 once_cell = "1.16.0"
 serde-tuple-vec-map = "1.0.1"
 base64 = "0.13.1"
+warp = "0.3.7"

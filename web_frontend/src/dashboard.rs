@@ -1,10 +1,12 @@
 use crate::blocking_enabled::BlockingEnabled;
-use crate::save_ca_certificate::SaveCaCertificate;
+// use crate::save_ca_certificate::SaveCaCertificate;
+use crate::get_api_host;
 use futures::future::{AbortHandle, Abortable};
+use futures::StreamExt;
 use gloo_timers::future::TimeoutFuture;
 use num_format::{Locale, ToFormattedString};
+use reqwasm::websocket::futures::WebSocket;
 use serde::Deserialize;
-use tauri_sys::tauri;
 use wasm_bindgen_futures::spawn_local;
 use yew::{html, Component, Context, Html};
 
@@ -21,7 +23,7 @@ pub struct Message {
 
 pub struct Dashboard {
     message: Message,
-    abort_handle: AbortHandle,
+    ws_abort_handle: AbortHandle,
 }
 
 impl Component for Dashboard {
@@ -35,15 +37,32 @@ impl Component for Dashboard {
         let future = Abortable::new(
             async move {
                 loop {
-                    let mut message: Message = tauri::invoke("get_statistics", &()).await.unwrap();
+                    let ws = match WebSocket::open(&format!("ws://{}/statistics", get_api_host())) {
+                        Ok(ws) => ws,
+                        Err(_err) => {
+                            log::warn!("Unable to connect to websocket, trying again.");
 
-                    // Invoke seems to reshuffle the data?
-                    message.top_clients.sort_by(|a, b| b.1.cmp(&a.1));
-                    message.top_blocked_paths.sort_by(|a, b| b.1.cmp(&a.1));
+                            TimeoutFuture::new(1_000).await;
 
-                    message_callback.emit(message);
+                            continue;
+                        }
+                    };
 
-                    TimeoutFuture::new(200).await;
+                    let (_write, mut read) = ws.split();
+
+                    while let Some(Ok(msg)) = read.next().await {
+                        let message = match msg {
+                            reqwasm::websocket::Message::Text(s) => {
+                                serde_json::from_str::<Message>(&s).unwrap()
+                            }
+                            reqwasm::websocket::Message::Bytes(_) => unreachable!(),
+                        };
+
+                        message_callback.emit(message);
+                    }
+                    log::warn!("Lost connection to websocket, trying again.");
+
+                    TimeoutFuture::new(1_000).await;
                 }
             },
             abort_registration,
@@ -54,7 +73,7 @@ impl Component for Dashboard {
         });
 
         Self {
-            abort_handle,
+            ws_abort_handle: abort_handle,
             message: Message {
                 proxied_requests: None,
                 blocked_requests: None,
@@ -104,7 +123,7 @@ impl Component for Dashboard {
                     </div>
                     <div
                         class="mt-6 flex flex-col-reverse justify-stretch space-y-4 space-y-reverse sm:flex-row-reverse sm:justify-end sm:space-x-reverse sm:space-y-0 sm:space-x-3 md:mt-0 md:flex-row md:space-x-3">
-                    <SaveCaCertificate />
+                    // <SaveCaCertificate />
                         <BlockingEnabled />
                     </div>
                 </div>
@@ -174,6 +193,6 @@ impl Component for Dashboard {
     }
 
     fn destroy(&mut self, _ctx: &Context<Self>) {
-        self.abort_handle.abort()
+        self.ws_abort_handle.abort()
     }
 }

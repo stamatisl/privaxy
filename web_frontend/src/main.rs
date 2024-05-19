@@ -7,10 +7,11 @@ mod dashboard;
 mod filters;
 mod requests;
 mod save_button;
-mod save_ca_certificate;
+// mod save_ca_certificate;
 mod settings;
 mod settings_textarea;
 mod submit_banner;
+
 
 static mut API_HOST: String = String::new();
 
@@ -121,6 +122,21 @@ fn switch(route: &Route) -> Html {
 
 #[function_component(App)]
 fn app() -> Html {
+    let document = gloo_utils::document();
+
+    let api_host = document
+        .query_selector("meta[name=\"api_host\"]")
+        .unwrap()
+        .unwrap()
+        .attributes()
+        .get_named_item("content")
+        .unwrap()
+        .value();
+
+    // We are only mutating this variable before the start of the app.
+    unsafe {
+        API_HOST = api_host;
+    }
     html! {
         <BrowserRouter>
             <Switch<Route> render={Switch::render(switch)} />

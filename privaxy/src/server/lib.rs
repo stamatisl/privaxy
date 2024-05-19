@@ -203,7 +203,7 @@ pub async fn start_privaxy() -> PrivaxyServer {
     let web_gui_server_addr = SocketAddr::from((ip, 8200));
 
     log::info!(
-        "Web gui available at http://{}",
+        "Web gui static files available at http://{}",
         web_gui_static_files_server_addr
     );
 
