@@ -8,11 +8,6 @@ edition = "2021"
 yew = "0.19.3"
 yew-router = "0.16.0"
 serde_json = "1.0.81"
-tauri-sys = { git = "https://github.com/JonasKruckenberg/tauri-sys", rev = "0c864ee8c2b7d2eb44add60ca7973c9f2454f899", features = [
-  "dialog",
-  "event",
-  "tauri",
-] }
 num-format = "0.4.0"
 serde = { version = "1.0.137", features = ["derive"] }
 gloo-utils = "0.1.3"
