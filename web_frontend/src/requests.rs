@@ -1,8 +1,7 @@
-use futures::future::{AbortHandle, Abortable};
 use crate::get_api_host;
+use futures::future::{AbortHandle, Abortable};
 use futures::StreamExt;
 use serde::Deserialize;
-use tauri_sys::event;
 use wasm_bindgen_futures::spawn_local;
 use reqwasm::websocket::futures::WebSocket;
 use yew::{html, Component, Context, Html};
@@ -28,17 +27,26 @@ impl Component for Requests {
 
     fn create(ctx: &Context<Self>) -> Self {
         let message_callback = ctx.link().callback(|message: Message| message);
+
         let ws = WebSocket::open(&format!("ws://{}/events", get_api_host())).unwrap();
+        let (_write, mut read) = ws.split();
+        
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         let future = Abortable::new(
-            async move {
-                let mut events = event::listen::<Message>("logged_request").await.unwrap();
-                while let Some(event) = events.next().await {
-                    message_callback.emit(event.payload);
-                }
-            },
-            abort_registration,
-        );
+          async move {
+              while let Some(Ok(msg)) = read.next().await {
+                  let message = match msg {
+                      reqwasm::websocket::Message::Text(s) => {
+                          serde_json::from_str::<Message>(&s).unwrap()
+                      }
+                      reqwasm::websocket::Message::Bytes(_) => unreachable!(),
+                  };
+
+                  message_callback.emit(message);
+              }
+          },
+          abort_registration,
+      );
 
         spawn_local(async {
             let _result = future.await;
