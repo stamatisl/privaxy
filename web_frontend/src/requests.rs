@@ -1,9 +1,9 @@
 use crate::get_api_host;
 use futures::future::{AbortHandle, Abortable};
 use futures::StreamExt;
+use reqwasm::websocket::futures::WebSocket;
 use serde::Deserialize;
 use wasm_bindgen_futures::spawn_local;
-use reqwasm::websocket::futures::WebSocket;
 use yew::{html, Component, Context, Html};
 
 const MAX_REQUESTS_SHOWN: usize = 500;
