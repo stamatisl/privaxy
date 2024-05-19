@@ -9,8 +9,8 @@ use openssl::{
 };
 use serde::{Deserialize, Serialize};
 use std::env;
-use std::{collections::BTreeSet, time::Duration};
 use std::path::{Path, PathBuf};
+use std::{collections::BTreeSet, time::Duration};
 use thiserror::Error;
 use tokio::sync::{self, mpsc::Sender};
 use tokio::{fs, sync::mpsc::Receiver};
@@ -57,7 +57,7 @@ impl Filter {
     async fn update(&self, http_client: &reqwest::Client) -> ConfigurationResult<String> {
         log::debug!("Updating filter: {}", self.title);
 
-        let filters_directory =get_filter_directory();
+        let filters_directory = get_filter_directory();
 
         fs::create_dir_all(&filters_directory).await?;
 
@@ -69,8 +69,7 @@ impl Filter {
     }
 
     pub async fn get_contents(&self, http_client: &reqwest::Client) -> ConfigurationResult<String> {
-        let filter_path = get_filter_directory()
-            .join(&self.file_name);
+        let filter_path = get_filter_directory().join(&self.file_name);
         match fs::read(filter_path).await {
             Err(err) => {
                 if err.kind() == std::io::ErrorKind::NotFound {
@@ -323,33 +322,33 @@ fn get_home_directory() -> ConfigurationResult<PathBuf> {
 }
 
 fn get_base_directory() -> ConfigurationResult<PathBuf> {
-    let base_directory: PathBuf =  match env::var("PRIVAXY_BASE_PATH") {
+    let base_directory: PathBuf = match env::var("PRIVAXY_BASE_PATH") {
         Ok(val) => PathBuf::from(&val),
         // Assume home directory
-        Err(_) => get_home_directory()?
+        Err(_) => get_home_directory()?,
     };
     match Path::exists(&base_directory) {
         Ok => Ok(base_directory),
-        Err(_) => Err(ConfigurationError::DirectoryNotFound)
+        Err(_) => Err(ConfigurationError::DirectoryNotFound),
     }
 }
- 
+
 fn get_config_directory() -> PathBuf {
-    let config_dir: PathBuf =  match env::var("PRIVAXY_CONFIG_PATH") {
+    let config_dir: PathBuf = match env::var("PRIVAXY_CONFIG_PATH") {
         Ok(val) => PathBuf::from(&val),
         // Assume default directory
-        Err(_) => PathBuf::from(CONFIGURATION_DIRECTORY_NAME)
+        Err(_) => PathBuf::from(CONFIGURATION_DIRECTORY_NAME),
     };
-    return get_base_directory()?.join(config_dir);
+    return get_base_directory().join(config_dir);
 }
 
 fn get_filter_directory() -> PathBuf {
-    let filter_dir: PathBuf =  match env::var("PRIVAXY_FILTER_PATH") {
+    let filter_dir: PathBuf = match env::var("PRIVAXY_FILTER_PATH") {
         Ok(val) => PathBuf::from(&val),
         // Assume home directory
-        Err(_) => FILTERS_DIRECTORY_NAME
+        Err(_) => FILTERS_DIRECTORY_NAME,
     };
-    return get_base_directory()?.join(filter_dir);
+    return get_base_directory().join(filter_dir);
 }
 
 async fn get_filter(
