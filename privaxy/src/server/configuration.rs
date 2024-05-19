@@ -328,8 +328,8 @@ fn get_base_directory() -> ConfigurationResult<PathBuf> {
         Err(_) => get_home_directory()?,
     };
     match Path::exists(&base_directory) {
-        Ok => Ok(base_directory),
-        Err(_) => Err(ConfigurationError::DirectoryNotFound),
+        true => Ok(base_directory),
+        false => Err(ConfigurationError::DirectoryNotFound),
     }
 }
 
@@ -339,16 +339,20 @@ fn get_config_directory() -> PathBuf {
         // Assume default directory
         Err(_) => PathBuf::from(CONFIGURATION_DIRECTORY_NAME),
     };
-    return get_base_directory().join(config_dir);
+    return get_base_directory()
+        .expect("Base path not found.")
+        .join(config_dir);
 }
 
 fn get_filter_directory() -> PathBuf {
     let filter_dir: PathBuf = match env::var("PRIVAXY_FILTER_PATH") {
         Ok(val) => PathBuf::from(&val),
         // Assume home directory
-        Err(_) => FILTERS_DIRECTORY_NAME,
+        Err(_) => PathBuf::from(FILTERS_DIRECTORY_NAME),
     };
-    return get_base_directory().join(filter_dir);
+    return get_base_directory()
+        .expect("Base path not found.")
+        .join(filter_dir);
 }
 
 async fn get_filter(

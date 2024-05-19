@@ -7,6 +7,7 @@ use hyper::{Client, Server};
 use proxy::exclusions;
 use reqwest::redirect::Policy;
 use std::convert::Infallible;
+use std::env;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::thread;
@@ -34,18 +35,31 @@ pub struct PrivaxyServer {
     pub requests_broadcast_sender: broadcast::Sender<Event>,
 }
 
-pub async fn start_privaxy() -> PrivaxyServer {
-    let ip = [127, 0, 0, 1];
-    match env::var("PRIVAXY_IP_ADDRESS") {
-        Ok(val) => {
-            // Parse the IP address from the environment variable string
-            ip = parse_ip_address(&val);
-        }
-        Err(_) => {
-            // Set a default IP address
-            ip = [127, 0, 0, 1];
+// Helper function to parse the IP address string into an array of u8
+fn parse_ip_address(ip_str: &str) -> [u8; 4] {
+    let mut ip: [u8; 4] = [0, 0, 0, 0];
+    let parts: Vec<&str> = ip_str.split('.').collect();
+    for (i, part) in parts.iter().enumerate() {
+        if let Ok(num) = part.parse::<u8>() {
+            ip[i] = num;
         }
     }
+    ip
+}
+
+pub async fn start_privaxy() -> PrivaxyServer {
+    let ip: [u8; 4] = match env::var("PRIVAXY_IP_ADDRESS") {
+        Ok(val) =>
+        // Parse the IP address from the environment variable string
+        {
+            parse_ip_address(&val)
+        }
+        Err(_) =>
+        // Set a default IP address
+        {
+            [127, 0, 0, 1]
+        }
+    };
 
     // We use reqwest instead of hyper's client to perform most of the proxying as it's more convenient
     // to handle compression as well as offers a more convenient interface.
