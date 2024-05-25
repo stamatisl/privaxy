@@ -1,5 +1,5 @@
 use crate::blocker::AdblockRequester;
-use crate::events::Event;
+use crate::web_gui::events::Event;
 use crate::proxy::exclusions::LocalExclusionStore;
 use hyper::server::conn::AddrStream;
 use hyper::service::{make_service_fn, service_fn};
@@ -20,7 +20,6 @@ mod blocker_utils;
 mod ca;
 mod cert;
 pub mod configuration;
-pub mod events;
 mod proxy;
 pub mod statistics;
 pub const WEBAPP_FRONTEND_DIR: Dir<'_> = include_dir!("web_frontend/dist");
@@ -140,6 +139,21 @@ pub async fn start_privaxy() -> PrivaxyServer {
 
     configuration_updater.start();
 
+    let configuration_save_lock = Arc::new(tokio::sync::Mutex::new(()));
+
+    let web_gui_server_addr = SocketAddr::from((ip, 8200));
+
+    web_gui::start_web_gui_server(
+        broadcast_tx.clone(),
+        statistics.clone(),
+        blocking_disabled_store.clone(),
+        configuration_updater_tx.clone(),
+        ca_certificate_pem.clone(),
+        configuration_save_lock.clone(),
+        local_exclusion_store.clone(),
+        web_gui_server_addr,
+    );
+
     thread::spawn(move || {
         let blocker = blocker::Blocker::new(
             crossbeam_sender,
@@ -189,40 +203,40 @@ pub async fn start_privaxy() -> PrivaxyServer {
             }))
         }
     });
-    let proxy_server_addr = SocketAddr::from((ip, 8100));
 
+    let proxy_server_addr = SocketAddr::from((ip, 8100));
 
     let server = Server::bind(&proxy_server_addr)
         .http1_preserve_header_case(true)
         .http1_title_case_headers(true)
         .tcp_keepalive(Some(Duration::from_secs(600)))
         .serve(make_service);
-    log::info!("Proxy available at http://{}", proxy_server_addr);
-    
-    let web_gui_static_files_server_addr = SocketAddr::from((ip, 8000));
-    let web_gui_server_addr = SocketAddr::from((ip, 8200));
 
-    log::info!(
-        "Web gui static files available at http://{}",
-        web_gui_static_files_server_addr
-    );
+    let web_gui_static_files_server_addr = SocketAddr::from((ip, 8000));
 
     web_gui::start_web_gui_static_files_server(
         web_gui_static_files_server_addr,
         web_gui_server_addr,
     );
+
+    log::info!("Proxy available at http://{}", proxy_server_addr);
     log::info!(
         "Web gui api server available at http://{}",
         web_gui_server_addr
     );
+    log::info!(
+        "Web gui available at http://{}",
+        web_gui_static_files_server_addr
+    );
 
-    tokio::spawn(server);
-
+    if let Err(e) = server.await {
+        log::error!("server error: {}", e);
+    }
 
     PrivaxyServer {
         ca_certificate_pem,
         configuration_updater_sender: configuration_updater_tx,
-        configuration_save_lock: Arc::new(tokio::sync::Mutex::new(())),
+        configuration_save_lock: configuration_save_lock,
         blocking_disabled_store: blocking_disabled_store_clone,
         statistics: statistics_clone,
         local_exclusion_store: local_exclusion_store_clone,

@@ -1,6 +1,6 @@
 use super::html_rewriter::Rewriter;
 use crate::blocker::AdblockRequester;
-use crate::events::Event;
+use crate::web_gui::events::Event;
 use crate::statistics::Statistics;
 use adblock::blocker::BlockerResult;
 use http::uri::{Authority, Scheme};
