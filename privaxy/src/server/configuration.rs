@@ -1,5 +1,5 @@
 use crate::{
-    blocker::AdblockRequester, ca::make_ca_certificate, proxy::exclusions::LocalExclusionStore,
+    blocker::AdblockRequester, ca::{self, make_ca_certificate}, proxy::exclusions::LocalExclusionStore,
 };
 use dirs::home_dir;
 use futures::future::{try_join_all, AbortHandle, Abortable};
@@ -8,7 +8,7 @@ use openssl::{
     x509::X509,
 };
 use serde::{Deserialize, Serialize};
-use std::env;
+use std::{env, f32::consts::E};
 use std::path::{Path, PathBuf};
 use std::{collections::BTreeSet, time::Duration};
 use thiserror::Error;
@@ -104,8 +104,10 @@ impl From<DefaultFilter> for Filter {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Ca {
-    ca_certificate: String,
-    ca_private_key: String,
+    ca_certificate: Option<String>,
+    ca_private_key: Option<String>,
+    ca_certificate_path: Option<String>,
+    ca_private_key_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -263,14 +265,44 @@ impl Configuration {
         Ok(())
     }
 
-    pub fn ca_certificate(&self) -> ConfigurationResult<X509> {
-        Ok(X509::from_pem(self.ca.ca_certificate.as_bytes())?)
+    pub async fn ca_certificate(&self) -> ConfigurationResult<X509> {
+        if let Some(ref ca_certificate_path) = self.ca.ca_certificate_path {
+            let ca_path = PathBuf::from(ca_certificate_path);
+            match fs::read(&ca_path).await {
+                Ok(ca_cert) => {
+                    let cert = X509::from_pem(&ca_cert)
+                        .map_err(|_| ConfigurationError::DirectoryNotFound)?;
+                    Ok(cert)
+                },
+                Err(err) => Err(ConfigurationError::FileSystemError(err)),
+            }
+        } else if let Some(ref ca_certificate) = self.ca.ca_certificate {
+            let ca_cert = X509::from_pem(ca_certificate.as_bytes())
+                .map_err(|_| ConfigurationError::DirectoryNotFound)?;
+            Ok(ca_cert)
+        } else {
+            Err(ConfigurationError::DirectoryNotFound)
+        }
     }
 
-    pub fn ca_private_key(&self) -> ConfigurationResult<PKey<Private>> {
-        Ok(PKey::private_key_from_pem(
-            self.ca.ca_private_key.as_bytes(),
-        )?)
+    pub async fn ca_private_key(&self) -> ConfigurationResult<PKey<Private>> {
+        if let Some(ref ca_private_key_path) = self.ca.ca_private_key_path {
+            let ca_path = PathBuf::from(ca_private_key_path);
+            match fs::read(&ca_path).await {
+                Ok(ca_key) => {
+                    let pkey = PKey::private_key_from_pem(&ca_key)
+                        .map_err(|_| ConfigurationError::DirectoryNotFound)?;
+                    Ok(pkey)
+                },
+                Err(err) => Err(ConfigurationError::FileSystemError(err)),
+            }
+        } else if let Some(ref ca_private_key) = self.ca.ca_private_key {
+            let pkey = PKey::private_key_from_pem(ca_private_key.as_bytes())
+                .map_err(|_| ConfigurationError::DirectoryNotFound)?;
+            Ok(pkey)
+        } else {
+            Err(ConfigurationError::DirectoryNotFound)
+        }
     }
 
     async fn new_default(http_client: reqwest::Client) -> ConfigurationResult<Self> {
@@ -292,8 +324,10 @@ impl Configuration {
                 .map(|filter| filter.into())
                 .collect(),
             ca: Ca {
-                ca_certificate: x509_pem,
-                ca_private_key: private_key_pem,
+                ca_certificate: Some(x509_pem),
+                ca_certificate_path: None,
+                ca_private_key: Some(private_key_pem),
+                ca_private_key_path: None
             },
             exclusions: BTreeSet::new(),
             custom_filters: Vec::new(),
