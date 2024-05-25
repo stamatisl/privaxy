@@ -49,18 +49,6 @@ fn parse_ip_address(ip_str: &str) -> [u8; 4] {
 }
 
 pub async fn start_privaxy() -> PrivaxyServer {
-    let ip: [u8; 4] = match env::var("PRIVAXY_IP_ADDRESS") {
-        Ok(val) =>
-        // Parse the IP address from the environment variable string
-        {
-            parse_ip_address(&val)
-        }
-        Err(_) =>
-        // Set a default IP address
-        {
-            [127, 0, 0, 1]
-        }
-    };
 
     // We use reqwest instead of hyper's client to perform most of the proxying as it's more convenient
     // to handle compression as well as offers a more convenient interface.
@@ -84,7 +72,7 @@ pub async fn start_privaxy() -> PrivaxyServer {
             std::process::exit(1)
         }
     };
-
+   
     let local_exclusion_store =
         LocalExclusionStore::new(Vec::from_iter(configuration.exclusions.clone().into_iter()));
     let local_exclusion_store_clone = local_exclusion_store.clone();
@@ -134,14 +122,27 @@ pub async fn start_privaxy() -> PrivaxyServer {
     )
     .await;
 
+
+    let network_config = configuration.network.clone();
     let configuration_updater_tx = configuration_updater.tx.clone();
     configuration_updater_tx.send(configuration).await.unwrap();
 
     configuration_updater.start();
 
     let configuration_save_lock = Arc::new(tokio::sync::Mutex::new(()));
-
-    let web_gui_server_addr = SocketAddr::from((ip, 8200));
+    let ip = match env::var("PRIVAXY_IP_ADDRESS") {
+        Ok(val) =>
+        // Parse the IP address from the environment variable string
+        {
+            parse_ip_address(&val)
+        }
+        Err(_) =>
+        // Set a default IP address
+        {
+            parse_ip_address(&network_config.bind_addr.clone())
+        }
+    };
+    let web_api_server_addr = SocketAddr::from((ip, network_config.api_port));
 
     web_gui::start_web_gui_server(
         broadcast_tx.clone(),
@@ -151,7 +152,7 @@ pub async fn start_privaxy() -> PrivaxyServer {
         ca_certificate_pem.clone(),
         configuration_save_lock.clone(),
         local_exclusion_store.clone(),
-        web_gui_server_addr,
+        web_api_server_addr,
     );
 
     thread::spawn(move || {
@@ -203,8 +204,9 @@ pub async fn start_privaxy() -> PrivaxyServer {
             }))
         }
     });
+   
 
-    let proxy_server_addr = SocketAddr::from((ip, 8100));
+    let proxy_server_addr = SocketAddr::from((ip, network_config.proxy_port));
 
     let server = Server::bind(&proxy_server_addr)
         .http1_preserve_header_case(true)
@@ -212,21 +214,21 @@ pub async fn start_privaxy() -> PrivaxyServer {
         .tcp_keepalive(Some(Duration::from_secs(600)))
         .serve(make_service);
 
-    let web_gui_static_files_server_addr = SocketAddr::from((ip, 8000));
+    let web_gui_http_addr = SocketAddr::from((ip, network_config.web_port));
 
     web_gui::start_web_gui_static_files_server(
-        web_gui_static_files_server_addr,
-        web_gui_server_addr,
+        web_gui_http_addr,
+        web_api_server_addr,
     );
 
     log::info!("Proxy available at http://{}", proxy_server_addr);
     log::info!(
-        "Web gui api server available at http://{}",
-        web_gui_server_addr
+        "API server available at http://{}",
+        web_api_server_addr
     );
     log::info!(
         "Web gui available at http://{}",
-        web_gui_static_files_server_addr
+        web_gui_http_addr
     );
 
     if let Err(e) = server.await {

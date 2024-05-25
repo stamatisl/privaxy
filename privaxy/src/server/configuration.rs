@@ -8,7 +8,7 @@ use openssl::{
     x509::X509,
 };
 use serde::{Deserialize, Serialize};
-use std::{env, f32::consts::E};
+use std::env;
 use std::path::{Path, PathBuf};
 use std::{collections::BTreeSet, time::Duration};
 use thiserror::Error;
@@ -51,6 +51,14 @@ pub struct Filter {
     title: String,
     group: FilterGroup,
     file_name: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct NetworkConfig {
+    pub bind_addr: String,
+    pub proxy_port: u16,
+    pub web_port: u16,
+    pub api_port: u16
 }
 
 impl Filter {
@@ -115,6 +123,7 @@ pub struct Configuration {
     pub exclusions: BTreeSet<String>,
     pub custom_filters: Vec<String>,
     ca: Ca,
+    pub network: NetworkConfig,
     pub filters: Vec<Filter>,
 }
 
@@ -328,6 +337,12 @@ impl Configuration {
                 ca_certificate_path: None,
                 ca_private_key: Some(private_key_pem),
                 ca_private_key_path: None
+            },
+            network: NetworkConfig {
+                bind_addr: "127.0.0.1".to_string(),
+                api_port: 8200,
+                proxy_port: 8100,
+                web_port: 8000
             },
             exclusions: BTreeSet::new(),
             custom_filters: Vec::new(),
