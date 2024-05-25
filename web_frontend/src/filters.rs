@@ -1,8 +1,10 @@
 use std::fmt::Debug;
-
+use std::io::Cursor;
 use crate::{save_button, submit_banner};
 use reqwasm::http::Request;
 use serde::{Deserialize, Serialize};
+use serde_json::StreamDeserializer;
+use serde_json::de::IoRead;
 use wasm_bindgen_futures::spawn_local;
 use yew::{html, Callback, Component, Context, Html};
 
@@ -88,17 +90,24 @@ impl Component for Filters {
                 log::debug!("Request: {:?}", request);
                 let message_callback = ctx.link().callback(|message: Message| message);
                 log::debug!("Message callback: {:?}", message_callback);
+
                 spawn_local(async move {
                     if let Ok(response) = request.send().await {
-                        // Todo: Handle errors
                         log::debug!("Response: {:?}", response);
                         if response.ok() {
                             log::debug!("Response OK");
-                            if let Ok(filter_configuration) =
-                                response.json::<FilterConfiguration>().await
-                            {
-                                message_callback.emit(Message::Display(filter_configuration))
-                            };
+                            if let Ok(body) = response.text().await {
+                                let cursor = Cursor::new(body);
+                                let stream = StreamDeserializer::new(IoRead::new(cursor));
+                                for result in stream {
+                                    match result {
+                                        Ok(filter_configuration) => {
+                                            message_callback.emit(Message::Display(filter_configuration))
+                                        }
+                                        Err(e) => log::error!("Failed to parse chunk: {:?}", e),
+                                    }
+                                }
+                            }
                         }
                     }
                 });

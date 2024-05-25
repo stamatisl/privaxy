@@ -1,17 +1,10 @@
 use super::get_error_response;
-use crate::configuration::{Configuration, FilterGroup};
-use serde::{Deserialize, Serialize};
+use crate::configuration::Configuration;
+use serde::Deserialize;
 use std::{convert::Infallible, sync::Arc};
 use tokio::sync::mpsc::Sender;
 use warp::http::Response;
 
-#[derive(Deserialize, Serialize, Clone, PartialEq, Eq)]
-struct RequestFilter {
-    enabled: bool,
-    title: String,
-    group: FilterGroup,
-    id: u8
-}
 
 #[derive(Debug, Deserialize)]
 pub struct FilterStatusChangeRequest {
