@@ -1,10 +1,10 @@
 use crate::proxy::exclusions::LocalExclusionStore;
 use crate::statistics::Statistics;
-use crate::{blocker, WEBAPP_FRONTEND_DIR};
+use crate::WEBAPP_FRONTEND_DIR;
 use crate::{blocker::BlockingDisabledStore, configuration::Configuration};
 use serde::Serialize;
 use std::net::SocketAddr;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc::Sender};
 use warp::http::Response;
 use warp::path::Tail;
@@ -216,6 +216,7 @@ fn with_http_client(
 }
 
 pub(crate) fn get_error_response(err: impl std::error::Error) -> Response<String> {
+    log::debug!("Building error response: {:?}", err);
     Response::builder()
         .status(http::StatusCode::INTERNAL_SERVER_ERROR)
         .header(http::header::CONTENT_TYPE, "application/json")

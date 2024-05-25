@@ -19,7 +19,7 @@ pub struct Message {
 pub struct Requests {
     messages: Vec<Message>,
     ws_abort_handle: AbortHandle,
-  }
+}
 
 impl Component for Requests {
     type Message = Message;
@@ -30,23 +30,23 @@ impl Component for Requests {
 
         let ws = WebSocket::open(&format!("ws://{}/events", get_api_host())).unwrap();
         let (_write, mut read) = ws.split();
-        
+
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         let future = Abortable::new(
-          async move {
-              while let Some(Ok(msg)) = read.next().await {
-                  let message = match msg {
-                      reqwasm::websocket::Message::Text(s) => {
-                          serde_json::from_str::<Message>(&s).unwrap()
-                      }
-                      reqwasm::websocket::Message::Bytes(_) => unreachable!(),
-                  };
+            async move {
+                while let Some(Ok(msg)) = read.next().await {
+                    let message = match msg {
+                        reqwasm::websocket::Message::Text(s) => {
+                            serde_json::from_str::<Message>(&s).unwrap()
+                        }
+                        reqwasm::websocket::Message::Bytes(_) => unreachable!(),
+                    };
 
-                  message_callback.emit(message);
-              }
-          },
-          abort_registration,
-      );
+                    message_callback.emit(message);
+                }
+            },
+            abort_registration,
+        );
 
         spawn_local(async {
             let _result = future.await;

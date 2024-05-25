@@ -5,7 +5,7 @@ use yew::prelude::*;
 use yew::{html, Html};
 use yew_router::prelude::*;
 
-#[derive(Clone, Copy, Routable, PartialEq, Eq)]
+#[derive(Clone, Copy, Routable, PartialEq)]
 pub enum SettingsRoute {
     #[at("/settings/filters")]
     Filters,
@@ -44,6 +44,7 @@ pub fn switch_settings(route: &SettingsRoute) -> Html {
             )
         }
     }
+
     let content = match route {
         SettingsRoute::Filters => {
             set_title("Settings - Filters");
@@ -82,7 +83,6 @@ pub fn switch_settings(route: &SettingsRoute) -> Html {
             html! {<SettingsTextarea h1="Custom Filters" {description} input_name="custom_filters" {textarea_description} {resource_url} />}
         }
     };
-
 
     html! {<div class="md:grid md:grid-cols-8">
     <nav class="space-y-1 mt-4 lg:col-span-1 sm:col-span-2" aria-label="Sidebar">

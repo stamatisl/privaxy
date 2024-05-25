@@ -10,6 +10,7 @@ pub async fn get_custom_filters(
     let configuration = match Configuration::read_from_home(http_client).await {
         Ok(configuration) => configuration,
         Err(err) => {
+            log::error!("Failed to get customs filters: {err}");
             return Ok(Box::new(get_error_response(err)));
         }
     };
@@ -30,11 +31,13 @@ pub async fn put_custom_filters(
     let mut configuration = match Configuration::read_from_home(http_client).await {
         Ok(configuration) => configuration,
         Err(err) => {
+            log::error!("Failed to put customs filters: {err}");
             return Ok(Box::new(get_error_response(err)));
         }
     };
 
     if let Err(err) = configuration.set_custom_filters(&custom_filters).await {
+        log::error!("Failed to set customs filters: {err}");
         return Ok(Box::new(get_error_response(err)));
     }
 

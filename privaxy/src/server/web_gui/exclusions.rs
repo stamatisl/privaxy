@@ -10,6 +10,7 @@ pub async fn get_exclusions(
     let configuration = match Configuration::read_from_home(http_client).await {
         Ok(configuration) => configuration,
         Err(err) => {
+            log::error!("Failed to get exclusions: {err}");
             return Ok(Box::new(get_error_response(err)));
         }
     };
@@ -31,6 +32,7 @@ pub async fn put_exclusions(
     let mut configuration = match Configuration::read_from_home(http_client).await {
         Ok(configuration) => configuration,
         Err(err) => {
+            log::error!("Failed to put exclusions: {err}");
             return Ok(Box::new(get_error_response(err)));
         }
     };

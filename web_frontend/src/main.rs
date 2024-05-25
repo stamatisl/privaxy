@@ -7,7 +7,6 @@ mod dashboard;
 mod filters;
 mod requests;
 mod save_button;
-// mod save_ca_certificate;
 mod settings;
 mod settings_textarea;
 mod submit_banner;

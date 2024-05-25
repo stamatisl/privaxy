@@ -1,8 +1,10 @@
+use std::fmt::Debug;
+
 use crate::{save_button, submit_banner};
 use reqwasm::http::Request;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen_futures::spawn_local;
-use yew::{classes, html, Callback, Component, Context, Html};
+use yew::{html, Callback, Component, Context, Html};
 
 use crate::get_api_host;
 
@@ -16,27 +18,27 @@ enum FilterGroup {
     Social,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Clone, PartialEq, Eq)]
 pub struct Filter {
     enabled: bool,
     title: String,
     group: FilterGroup,
     file_name: String,
 }
-
+impl std::fmt::Display for Filter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Filter(Enabled={}, Title={}, Group={:?}, File_name={})", self.enabled, self.title, self.group, self.file_name)
+    }
+    
+}
+#[allow(non_snake_case)]
 #[derive(Serialize)]
 pub struct FilterStatusChangeRequest {
     enabled: bool,
     file_name: String,
 }
 
-#[allow(non_snake_case)]
-#[derive(Serialize)]
-pub struct FilterStatusChangeRequestPayload {
-    filterStatusChangeRequest: Vec<FilterStatusChangeRequest>,
-}
-
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Clone, PartialEq, Eq)]
 pub struct FilterConfiguration(Vec<Filter>);
 
 pub enum Message {
@@ -76,18 +78,22 @@ impl Component for Filters {
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
             Message::Display(filter_configuration) => {
+                log::debug!("Displaying");
                 self.filter_configuration = Some(filter_configuration.clone());
                 self.filter_configuration_before_changes = Some(filter_configuration);
             }
             Message::Load => {
+                log::debug!("Retrieving filters..");
                 let request = Request::get(&format!("http://{}/filters", get_api_host()));
-
+                log::debug!("Request: {:?}", request);
                 let message_callback = ctx.link().callback(|message: Message| message);
-
+                log::debug!("Message callback: {:?}", message_callback);
                 spawn_local(async move {
                     if let Ok(response) = request.send().await {
                         // Todo: Handle errors
+                        log::debug!("Response: {:?}", response);
                         if response.ok() {
+                            log::debug!("Response OK");
                             if let Ok(filter_configuration) =
                                 response.json::<FilterConfiguration>().await
                             {
@@ -101,7 +107,6 @@ impl Component for Filters {
                 if !self.configuration_has_changed() {
                     return false;
                 }
-
                 let request_body = self
                     .filter_configuration
                     .as_ref()
@@ -160,20 +165,21 @@ impl Component for Filters {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
+        log::debug!("At view.");
         let save_button_state = if !self.configuration_has_changed() {
             save_button::SaveButtonState::Disabled
         } else {
             save_button::SaveButtonState::Enabled
         };
+        log::debug!("Retrieving callback..");
 
         let callback = ctx
             .link()
             .callback(|(filter_file_name, enabled): (String, bool)| {
                 Message::UpdateFilterSelection((filter_file_name, enabled))
             });
-
+        log::debug!("Retrieved callback.");
         let save_callback = ctx.link().callback(|_| Message::Save);
-
         let render_category_filter = |filter: &Filter| {
             let filter_file_name = filter.file_name.clone();
             let filter_enabled = filter.enabled;
@@ -182,7 +188,7 @@ impl Component for Filters {
             let checkbox_callback = Callback::from(move |_| {
                 callback_clone.emit((filter_file_name.to_string(), !filter_enabled))
             });
-
+            log::debug!("Returning category filter.");
             html! {
             <div class="relative flex items-start py-4">
                 <div class="min-w-0 flex-1 text-sm">
@@ -195,11 +201,18 @@ impl Component for Filters {
             </div>
             }
         };
-
+        log::debug!("Rendering category filter.");
         let render_category = |category: FilterGroup, filters: &FilterConfiguration| {
             let category_name = format!("{:?}", category);
-            let filters = filters.0.iter().filter(|filter| filter.group == category);
+            log::debug!("Category filter: {category_name}");
+            let filters = filters
+                .0
+                .iter()
+                .filter(|filter| filter.group == category)
+                .collect::<Vec<_>>();
 
+            log::debug!("Getting request body");
+            log::debug!("Filter self: {:?}", filters.clone().into_iter().map(|i| i.to_string()).collect::<String>());
             html! {
             <fieldset class="mb-8">
                 <legend class="text-lg font-medium text-gray-900">{category_name}</legend>

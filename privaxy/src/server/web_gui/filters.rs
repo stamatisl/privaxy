@@ -1,9 +1,17 @@
 use super::get_error_response;
-use crate::configuration::Configuration;
-use serde::Deserialize;
+use crate::configuration::{Configuration, FilterGroup};
+use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, sync::Arc};
 use tokio::sync::mpsc::Sender;
 use warp::http::Response;
+
+#[derive(Deserialize, Serialize, Clone, PartialEq, Eq)]
+struct RequestFilter {
+    enabled: bool,
+    title: String,
+    group: FilterGroup,
+    id: u8
+}
 
 #[derive(Debug, Deserialize)]
 pub struct FilterStatusChangeRequest {
@@ -22,6 +30,7 @@ pub async fn change_filter_status(
     let mut configuration = match Configuration::read_from_home(http_client).await {
         Ok(configuration) => configuration,
         Err(err) => {
+            log::error!("Failed to change filter status: {err}");
             return Ok(get_error_response(err));
         }
     };
@@ -31,6 +40,7 @@ pub async fn change_filter_status(
             .set_filter_enabled_status(&filter.file_name, filter.enabled)
             .await
         {
+            log::error!("Failed to change filter status: {err}");
             return Ok(get_error_response(err));
         }
     }
@@ -51,11 +61,14 @@ pub async fn get_filters_configuration(
 ) -> Result<impl warp::Reply, Infallible> {
     let configuration = match Configuration::read_from_home(http_client).await {
         Ok(configuration) => configuration,
-        Err(err) => return Ok(get_error_response(err)),
+        Err(err) => {
+        log::error!("Failed to get filters configuration: {err}");
+        return Ok(get_error_response(err))
+        }
     };
 
     let filters = configuration.filters;
-
+    log::debug!("Filters: {:?}", filters);
     Ok(Response::builder()
         .header(http::header::CONTENT_TYPE, "application/json")
         .body(serde_json::to_string(&filters).unwrap())
