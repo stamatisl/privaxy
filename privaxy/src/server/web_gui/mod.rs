@@ -118,7 +118,19 @@ pub(crate) fn start_web_gui_server(
                     .and(with_configuration_save_lock(
                         configuration_save_lock.clone(),
                     ))
-                    .and_then(filters::change_filter_status)))
+                    .and_then(filters::change_filter_status))
+                .or(warp::post()
+                    .and(warp::path("filters"))
+                    .and(warp::body::json())
+                    .and(with_http_client(http_client.clone()))
+                    .and(with_configuration_updater_sender(
+                        configuration_updater_sender.clone(),
+                    ))
+                    .and(with_configuration_save_lock(
+                        configuration_save_lock.clone(),
+                    ))
+                    .and_then(filters::add_filter)),
+                )
             .or(warp::path("custom-filters")
                 .and(
                     warp::get()
