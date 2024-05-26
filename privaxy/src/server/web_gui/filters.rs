@@ -1,5 +1,6 @@
 use super::get_error_response;
 use crate::configuration::{Configuration, Filter, FilterGroup, calculate_sha256_hex};
+use openssl::conf;
 use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
 
@@ -89,7 +90,7 @@ pub async fn add_filter(
     let _guard = configuration_save_lock.lock().await;
 
     // Attempt to retrieve the file from the provided URL
-    let filter_content = match http_client.get(&add_filter_request.title).send().await {
+    let filter_content = match http_client.get(add_filter_request.url.as_str()).send().await {
         Ok(response) => {
             if response.status().is_success() {
                 match response.text().await {
@@ -122,14 +123,16 @@ pub async fn add_filter(
         }
     };
 
+    // Clone the URL to avoid moving the original value
+    let filter_url = add_filter_request.url.clone();
 
     // Add the new filter to the configuration
     let new_filter = Filter {
         enabled: add_filter_request.enabled,
-        url: add_filter_request.url,
+        url: filter_url,
         title: add_filter_request.title.clone(),
         group: add_filter_request.group,
-        file_name: calculate_sha256_hex(&add_filter_request.title.clone()), // Generate a unique file name
+        file_name: calculate_sha256_hex(&add_filter_request.url.to_string()), // Generate a unique file name
     };
 
     // Append the filter content to the custom_filters vector (or write to a file if needed)
@@ -138,11 +141,23 @@ pub async fn add_filter(
     // Add the new filter to the filters vector
     configuration.filters.push(new_filter);
 
+    // Save the updated configuration
+    if let Err(err) = configuration.save().await {
+        log::error!("Failed to save configuration: {err}");
+        return Ok(Response::builder()
+            .status(http::StatusCode::INTERNAL_SERVER_ERROR)
+            .body(format!("Failed to save configuration: {err}"))
+            .unwrap());
+    }
+
     // Send the updated configuration to the updater
-    configuration_updater_sender
-        .send(configuration.clone())
-        .await
-        .unwrap();
+    if let Err(err) = configuration_updater_sender.send(configuration.clone()).await {
+        log::error!("Failed to send updated configuration: {err}");
+        return Ok(Response::builder()
+            .status(http::StatusCode::INTERNAL_SERVER_ERROR)
+            .body(format!("Failed to send updated configuration: {err}"))
+            .unwrap());
+    }
 
     Ok(Response::builder()
         .status(http::StatusCode::CREATED)
