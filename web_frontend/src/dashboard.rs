@@ -9,6 +9,7 @@ use reqwasm::websocket::futures::WebSocket;
 use serde::Deserialize;
 use wasm_bindgen_futures::spawn_local;
 use yew::{html, Component, Context, Html};
+use std::io::Cursor;
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct Message {
@@ -50,15 +51,35 @@ impl Component for Dashboard {
 
                     let (_write, mut read) = ws.split();
 
-                    while let Some(Ok(msg)) = read.next().await {
-                        let message = match msg {
-                            reqwasm::websocket::Message::Text(s) => {
-                                serde_json::from_str::<Message>(&s).unwrap()
+                    while let Some(result) = read.next().await {
+                        match result {
+                            Ok(msg) => {
+                                let message = match msg {
+                                    reqwasm::websocket::Message::Text(s) => {
+                                        let cursor = Cursor::new(s.as_bytes());
+                                        let mut deserializer = serde_json::Deserializer::from_reader(cursor).into_iter::<Message>();
+                            
+                                        match deserializer.next() {
+                                            Some(Ok(message)) => message,
+                                            Some(Err(e)) => {
+                                                log::error!("Failed to deserialize message: {:?}", e);
+                                                continue;
+                                            }
+                                            None => {
+                                                log::warn!("No message received");
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                    reqwasm::websocket::Message::Bytes(_) => unreachable!(),
+                                };
+                                message_callback.emit(message);
                             }
-                            reqwasm::websocket::Message::Bytes(_) => unreachable!(),
-                        };
-
-                        message_callback.emit(message);
+                            Err(e) => {
+                                log::warn!("WebSocket error: {:?}", e);
+                                break;
+                            }
+                        }
                     }
                     log::warn!("Lost connection to websocket, trying again.");
 
