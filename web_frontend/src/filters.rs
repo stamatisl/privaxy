@@ -1,4 +1,4 @@
-use crate::{save_button, submit_banner};
+use crate::{save_button, submit_banner,get_api_host};
 use reqwasm::http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::de::IoRead;
@@ -7,8 +7,9 @@ use std::fmt::Debug;
 use std::io::Cursor;
 use wasm_bindgen_futures::spawn_local;
 use yew::{html, Callback, Component, Context, Html};
-
-use crate::get_api_host;
+use yew::prelude::*;
+use web_sys::{HtmlInputElement, HtmlSelectElement};
+use yew::InputEvent;
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 enum FilterGroup {
@@ -18,6 +19,111 @@ enum FilterGroup {
     Privacy,
     Malware,
     Social,
+}
+
+impl FilterGroup {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FilterGroup::Default => "Default",
+            FilterGroup::Regional => "Regional",
+            FilterGroup::Ads => "Ads",
+            FilterGroup::Privacy => "Privacy",
+            FilterGroup::Malware => "Malware",
+            FilterGroup::Social => "Social",
+        }
+    }
+    pub fn values() -> Vec<Self> {
+        vec![
+            FilterGroup::Default,
+            FilterGroup::Regional,
+            FilterGroup::Ads,
+            FilterGroup::Privacy,
+            FilterGroup::Malware,
+            FilterGroup::Social,
+        ]
+    }
+}
+
+pub enum AddFilterMessage {
+    Open,
+    Close,
+    Save(String, FilterGroup),
+    CategoryChanged(FilterGroup),
+    UrlChanged(String),
+}
+pub struct AddFilterComponent {
+    link: yew::html::Scope<Self>,
+    is_open: bool,
+    category: FilterGroup,
+    url: String,
+}
+
+impl Component for AddFilterComponent {
+    type Message = AddFilterMessage;
+    type Properties = ();
+
+    fn create(_ctx: &Context<Self>) -> Self {
+        Self {
+            link: _ctx.link().clone(),
+            is_open: false,
+            category: FilterGroup::Default,
+            url: String::new(),
+        }
+    }
+
+    fn update(&mut self, _ctx: &Context<Self>, msg: AddFilterMessage) -> bool {
+        match msg {
+            AddFilterMessage::Open => self.is_open = true,
+            AddFilterMessage::Close => self.is_open = false,
+            AddFilterMessage::Save(url, category) => {
+                // Handle save logic here
+                self.is_open = false;
+            }
+            AddFilterMessage::CategoryChanged(category) => self.category = category,
+            AddFilterMessage::UrlChanged(url) => self.url = url,
+        }
+        true
+    }
+
+    fn view(&self, _ctx: &Context<Self>) -> Html {
+        let options: Html = FilterGroup::values().into_iter().map(|group| {
+            html! {
+                <option value={group.as_str()}>{group.as_str()}</option>
+            }
+        }).collect();
+        let url = self.url.clone();
+        let category = self.category.clone();
+        html! {
+            <>
+                <button onclick={self.link.callback(|_| AddFilterMessage::Open)}>{"Add filter"}</button>
+                {if self.is_open {
+                    html! {
+                        <div>
+                            <select onchange={_ctx.link().callback(|e: Event| {
+                                let select = e.target_dyn_into::<HtmlSelectElement>().expect("event target should be a select element");
+                                let value = select.value();
+                                AddFilterMessage::CategoryChanged(FilterGroup::values().into_iter().find(|group| group.as_str() == value).expect("invalid category"))
+                            })}>
+                                { options }
+                            </select>
+                            <input
+                                type="text"
+                                value={""}
+                                oninput={_ctx.link().callback(|e: InputEvent| {
+                                    let input = e.target_dyn_into::<HtmlInputElement>().expect("event target should be an input element");
+                                    AddFilterMessage::UrlChanged(input.value())
+                                })}
+                            />
+                            <button onclick={_ctx.link().callback(move |_| AddFilterMessage::Save(url.clone(), category.clone()))}>{"Save"}</button>
+                            <button onclick={_ctx.link().callback(|_| AddFilterMessage::Close)}>{"Cancel"}</button>
+                        </div>
+                    }
+                } else {
+                    html! {}
+                }}
+            </>
+        }
+    }
 }
 
 #[derive(Deserialize, Clone, PartialEq, Eq)]
@@ -269,6 +375,9 @@ impl Component for Filters {
                     {success_banner}
                     <div class="mb-5">
                         <save_button::SaveButton state={save_button_state} onclick={save_callback} />
+                    </div>
+                    <div class="mb-5">
+                        <AddFilterComponent />
                     </div>
                     { render_category(FilterGroup::Default, filter_configuration) }
                     { render_category(FilterGroup::Ads, filter_configuration) }
