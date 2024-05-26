@@ -1,8 +1,8 @@
 use futures::{SinkExt, StreamExt};
+use log;
 use std::time::Duration;
 use tokio::time::sleep;
 use warp::ws::{Message, WebSocket};
-use log;
 
 use crate::statistics::Statistics;
 
@@ -15,7 +15,7 @@ pub(super) async fn statistics(websocket: WebSocket, statistics: Statistics) {
     // When the client first visits the dashboard, we want to send a first message immediately.
     let mut last_message =
         Message::text(serde_json::to_string(&statistics.get_serialized()).unwrap());
-    
+
     log::debug!("Last message: {:?}", last_message);
 
     let _result = tx.send(last_message.clone()).await;

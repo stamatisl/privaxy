@@ -3,7 +3,6 @@ use std::time::Duration;
 
 const RUST_LOG_ENV_KEY: &str = "RUST_LOG";
 
-
 #[tokio::main]
 async fn main() {
     if std::env::var(RUST_LOG_ENV_KEY).is_err() {

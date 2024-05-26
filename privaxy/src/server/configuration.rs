@@ -1,5 +1,7 @@
 use crate::{
-    blocker::AdblockRequester, ca::{self, make_ca_certificate}, proxy::exclusions::LocalExclusionStore,
+    blocker::AdblockRequester,
+    ca::{self, make_ca_certificate},
+    proxy::exclusions::LocalExclusionStore,
 };
 use dirs::home_dir;
 use futures::future::{try_join_all, AbortHandle, Abortable};
@@ -58,7 +60,7 @@ pub struct NetworkConfig {
     pub bind_addr: String,
     pub proxy_port: u16,
     pub web_port: u16,
-    pub api_port: u16
+    pub api_port: u16,
 }
 
 impl Filter {
@@ -282,7 +284,7 @@ impl Configuration {
                     let cert = X509::from_pem(&ca_cert)
                         .map_err(|_| ConfigurationError::DirectoryNotFound)?;
                     Ok(cert)
-                },
+                }
                 Err(err) => Err(ConfigurationError::FileSystemError(err)),
             }
         } else if let Some(ref ca_certificate) = self.ca.ca_certificate {
@@ -302,7 +304,7 @@ impl Configuration {
                     let pkey = PKey::private_key_from_pem(&ca_key)
                         .map_err(|_| ConfigurationError::DirectoryNotFound)?;
                     Ok(pkey)
-                },
+                }
                 Err(err) => Err(ConfigurationError::FileSystemError(err)),
             }
         } else if let Some(ref ca_private_key) = self.ca.ca_private_key {
@@ -336,13 +338,13 @@ impl Configuration {
                 ca_certificate: Some(x509_pem),
                 ca_certificate_path: None,
                 ca_private_key: Some(private_key_pem),
-                ca_private_key_path: None
+                ca_private_key_path: None,
             },
             network: NetworkConfig {
                 bind_addr: "127.0.0.1".to_string(),
                 api_port: 8200,
                 proxy_port: 8100,
-                web_port: 8000
+                web_port: 8000,
             },
             exclusions: BTreeSet::new(),
             custom_filters: Vec::new(),

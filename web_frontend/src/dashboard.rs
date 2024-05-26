@@ -7,9 +7,9 @@ use gloo_timers::future::TimeoutFuture;
 use num_format::{Locale, ToFormattedString};
 use reqwasm::websocket::futures::WebSocket;
 use serde::Deserialize;
+use std::io::Cursor;
 use wasm_bindgen_futures::spawn_local;
 use yew::{html, Component, Context, Html};
-use std::io::Cursor;
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct Message {
@@ -57,12 +57,17 @@ impl Component for Dashboard {
                                 let message = match msg {
                                     reqwasm::websocket::Message::Text(s) => {
                                         let cursor = Cursor::new(s.as_bytes());
-                                        let mut deserializer = serde_json::Deserializer::from_reader(cursor).into_iter::<Message>();
-                            
+                                        let mut deserializer =
+                                            serde_json::Deserializer::from_reader(cursor)
+                                                .into_iter::<Message>();
+
                                         match deserializer.next() {
                                             Some(Ok(message)) => message,
                                             Some(Err(e)) => {
-                                                log::error!("Failed to deserialize message: {:?}", e);
+                                                log::error!(
+                                                    "Failed to deserialize message: {:?}",
+                                                    e
+                                                );
                                                 continue;
                                             }
                                             None => {
@@ -144,7 +149,7 @@ impl Component for Dashboard {
                     </div>
                     <div
                         class="mt-6 flex flex-col-reverse justify-stretch space-y-4 space-y-reverse sm:flex-row-reverse sm:justify-end sm:space-x-reverse sm:space-y-0 sm:space-x-3 md:mt-0 md:flex-row md:space-x-3">
-                    // <SaveCaCertificate />
+                    <SaveCaCertificate />
                         <BlockingEnabled />
                     </div>
                 </div>

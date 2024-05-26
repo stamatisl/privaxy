@@ -13,7 +13,6 @@ pub struct BlockingEnabled {
     button_state: ButtonState,
 }
 
-
 #[derive(Debug)]
 pub enum Message {
     EnableBlocking,
@@ -32,7 +31,7 @@ impl Component for BlockingEnabled {
 
         Self {
             blocking_enabled: true,
-            button_state: ButtonState::Loading
+            button_state: ButtonState::Loading,
         }
     }
 

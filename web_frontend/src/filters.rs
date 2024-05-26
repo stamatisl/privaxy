@@ -1,10 +1,10 @@
-use std::fmt::Debug;
-use std::io::Cursor;
 use crate::{save_button, submit_banner};
 use reqwasm::http::Request;
 use serde::{Deserialize, Serialize};
-use serde_json::StreamDeserializer;
 use serde_json::de::IoRead;
+use serde_json::StreamDeserializer;
+use std::fmt::Debug;
+use std::io::Cursor;
 use wasm_bindgen_futures::spawn_local;
 use yew::{html, Callback, Component, Context, Html};
 
@@ -29,9 +29,12 @@ pub struct Filter {
 }
 impl std::fmt::Display for Filter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Filter(Enabled={}, Title={}, Group={:?}, File_name={})", self.enabled, self.title, self.group, self.file_name)
+        write!(
+            f,
+            "Filter(Enabled={}, Title={}, Group={:?}, File_name={})",
+            self.enabled, self.title, self.group, self.file_name
+        )
     }
-    
 }
 #[allow(non_snake_case)]
 #[derive(Serialize)]
@@ -101,9 +104,8 @@ impl Component for Filters {
                                 let stream = StreamDeserializer::new(IoRead::new(cursor));
                                 for result in stream {
                                     match result {
-                                        Ok(filter_configuration) => {
-                                            message_callback.emit(Message::Display(filter_configuration))
-                                        }
+                                        Ok(filter_configuration) => message_callback
+                                            .emit(Message::Display(filter_configuration)),
                                         Err(e) => log::error!("Failed to parse chunk: {:?}", e),
                                     }
                                 }
@@ -221,7 +223,14 @@ impl Component for Filters {
                 .collect::<Vec<_>>();
 
             log::debug!("Getting request body");
-            log::debug!("Filter self: {:?}", filters.clone().into_iter().map(|i| i.to_string()).collect::<String>());
+            log::debug!(
+                "Filter self: {:?}",
+                filters
+                    .clone()
+                    .into_iter()
+                    .map(|i| i.to_string())
+                    .collect::<String>()
+            );
             html! {
             <fieldset class="mb-8">
                 <legend class="text-lg font-medium text-gray-900">{category_name}</legend>

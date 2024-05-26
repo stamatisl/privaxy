@@ -11,7 +11,6 @@ mod settings;
 mod settings_textarea;
 mod submit_banner;
 
-
 static mut API_HOST: String = String::new();
 
 pub fn get_api_host() -> &'static str {
@@ -52,8 +51,6 @@ fn not_found() -> Html {
     </div>
      }
 }
-
-
 
 fn switch(route: &Route) -> Html {
     fn get_classes(current_route: Route, for_route_link: Route) -> Classes {

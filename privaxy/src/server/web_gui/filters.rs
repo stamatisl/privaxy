@@ -5,7 +5,6 @@ use std::{convert::Infallible, sync::Arc};
 use tokio::sync::mpsc::Sender;
 use warp::http::Response;
 
-
 #[derive(Debug, Deserialize)]
 pub struct FilterStatusChangeRequest {
     enabled: bool,
@@ -55,8 +54,8 @@ pub async fn get_filters_configuration(
     let configuration = match Configuration::read_from_home(http_client).await {
         Ok(configuration) => configuration,
         Err(err) => {
-        log::error!("Failed to get filters configuration: {err}");
-        return Ok(get_error_response(err))
+            log::error!("Failed to get filters configuration: {err}");
+            return Ok(get_error_response(err));
         }
     };
 

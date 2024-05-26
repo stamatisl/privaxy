@@ -1,9 +1,10 @@
 use crate::blocker::AdblockRequester;
-use crate::web_gui::events::Event;
 use crate::proxy::exclusions::LocalExclusionStore;
+use crate::web_gui::events::Event;
 use hyper::server::conn::AddrStream;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Client, Server};
+use include_dir::{include_dir, Dir};
 use proxy::exclusions;
 use reqwest::redirect::Policy;
 use std::convert::Infallible;
@@ -13,8 +14,6 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use tokio::sync::broadcast;
-use include_dir::{include_dir, Dir};
-mod web_gui;
 pub mod blocker;
 mod blocker_utils;
 mod ca;
@@ -22,6 +21,7 @@ mod cert;
 pub mod configuration;
 mod proxy;
 pub mod statistics;
+mod web_gui;
 pub const WEBAPP_FRONTEND_DIR: Dir<'_> = include_dir!("web_frontend/dist");
 
 #[derive(Debug, Clone)]
@@ -49,7 +49,6 @@ fn parse_ip_address(ip_str: &str) -> [u8; 4] {
 }
 
 pub async fn start_privaxy() -> PrivaxyServer {
-
     // We use reqwest instead of hyper's client to perform most of the proxying as it's more convenient
     // to handle compression as well as offers a more convenient interface.
     let client = reqwest::Client::builder()
@@ -72,7 +71,7 @@ pub async fn start_privaxy() -> PrivaxyServer {
             std::process::exit(1)
         }
     };
-   
+
     let local_exclusion_store =
         LocalExclusionStore::new(Vec::from_iter(configuration.exclusions.clone().into_iter()));
     let local_exclusion_store_clone = local_exclusion_store.clone();
@@ -121,7 +120,6 @@ pub async fn start_privaxy() -> PrivaxyServer {
         None,
     )
     .await;
-
 
     let network_config = configuration.network.clone();
     let configuration_updater_tx = configuration_updater.tx.clone();
@@ -204,7 +202,6 @@ pub async fn start_privaxy() -> PrivaxyServer {
             }))
         }
     });
-   
 
     let proxy_server_addr = SocketAddr::from((ip, network_config.proxy_port));
 
@@ -216,20 +213,11 @@ pub async fn start_privaxy() -> PrivaxyServer {
 
     let web_gui_http_addr = SocketAddr::from((ip, network_config.web_port));
 
-    web_gui::start_web_gui_static_files_server(
-        web_gui_http_addr,
-        web_api_server_addr,
-    );
+    web_gui::start_web_gui_static_files_server(web_gui_http_addr, web_api_server_addr);
 
     log::info!("Proxy available at http://{}", proxy_server_addr);
-    log::info!(
-        "API server available at http://{}",
-        web_api_server_addr
-    );
-    log::info!(
-        "Web gui available at http://{}",
-        web_gui_http_addr
-    );
+    log::info!("API server available at http://{}", web_api_server_addr);
+    log::info!("Web gui available at http://{}", web_gui_http_addr);
 
     if let Err(e) = server.await {
         log::error!("server error: {}", e);

@@ -7,8 +7,6 @@ use yew::virtual_dom::VNode;
 use yew::Properties;
 use yew::{html, Component, Context, Html, InputEvent, TargetCast};
 
-
-
 #[derive(Properties, PartialEq)]
 pub struct Props {
     pub h1: String,
