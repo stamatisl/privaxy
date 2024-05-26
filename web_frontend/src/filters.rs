@@ -21,6 +21,12 @@ enum FilterGroup {
     Social,
 }
 
+#[derive(Properties, PartialEq)]
+pub struct Props {
+    pub state: save_button::SaveButtonState,
+}
+
+
 impl FilterGroup {
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -51,6 +57,7 @@ pub enum AddFilterMessage {
     CategoryChanged(FilterGroup),
     UrlChanged(String),
 }
+
 pub struct AddFilterComponent {
     link: yew::html::Scope<Self>,
     is_open: bool,
@@ -60,7 +67,7 @@ pub struct AddFilterComponent {
 
 impl Component for AddFilterComponent {
     type Message = AddFilterMessage;
-    type Properties = ();
+    type Properties = Props;
 
     fn create(_ctx: &Context<Self>) -> Self {
         Self {
@@ -86,6 +93,45 @@ impl Component for AddFilterComponent {
     }
 
     fn view(&self, _ctx: &Context<Self>) -> Html {
+        let mut save_button_classes = classes!(
+            "inline-flex",
+            "items-center",
+            "justify-center",
+            "focus:ring-green-500",
+            "bg-green-600",
+            "hover:bg-green-700",
+            "px-4",
+            "py-2",
+            "border",
+            "transition",
+            "ease-in-out",
+            "duration-150",
+            "border-transparent",
+            "text-sm",
+            "font-medium",
+            "rounded-md",
+            "shadow-sm",
+            "text-white",
+            "focus:outline-none",
+            "focus:ring-2",
+            "focus:ring-offset-2",
+            "focus:ring-offset-gray-100",
+        );
+    
+        let properties = _ctx.props();
+    
+        if properties.state == save_button::SaveButtonState::Disabled
+            || properties.state == save_button::SaveButtonState::Loading
+        {
+            save_button_classes.push("opacity-50");
+            save_button_classes.push("cursor-not-allowed");
+        }
+    
+        let button_text = if properties.state == save_button::SaveButtonState::Loading {
+            "Loading..."
+        } else {
+            "Add filter"
+        };
         let options: Html = FilterGroup::values().into_iter().map(|group| {
             html! {
                 <option value={group.as_str()}>{group.as_str()}</option>
@@ -95,27 +141,51 @@ impl Component for AddFilterComponent {
         let category = self.category.clone();
         html! {
             <>
-                <button onclick={self.link.callback(|_| AddFilterMessage::Open)}>{"Add filter"}</button>
+                <button onclick={self.link.callback(|_| AddFilterMessage::Open)} type="button" class={classes!(save_button_classes, "mt-5" )}>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="-ml-0.5 mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    {button_text}
+                </button>
                 {if self.is_open {
                     html! {
-                        <div>
-                            <select onchange={_ctx.link().callback(|e: Event| {
-                                let select = e.target_dyn_into::<HtmlSelectElement>().expect("event target should be a select element");
-                                let value = select.value();
-                                AddFilterMessage::CategoryChanged(FilterGroup::values().into_iter().find(|group| group.as_str() == value).expect("invalid category"))
-                            })}>
-                                { options }
-                            </select>
-                            <input
-                                type="text"
-                                value={""}
-                                oninput={_ctx.link().callback(|e: InputEvent| {
-                                    let input = e.target_dyn_into::<HtmlInputElement>().expect("event target should be an input element");
-                                    AddFilterMessage::UrlChanged(input.value())
-                                })}
-                            />
-                            <button onclick={_ctx.link().callback(move |_| AddFilterMessage::Save(url.clone(), category.clone()))}>{"Save"}</button>
-                            <button onclick={_ctx.link().callback(|_| AddFilterMessage::Close)}>{"Cancel"}</button>
+                        <div class="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50">
+                            <div class="bg-white p-6 rounded-lg shadow-lg z-60">
+                                <div class="flex flex-col space-y-4">
+                                    <div class="flex items-center">
+                                        <div class="w-32">
+                                            <label class="font-bold">{"Category"}</label>
+                                        </div>
+                                        <select class="flex-1 bg-white border border-gray-300 text-gray-700 py-2 px-4 pr-8 rounded leading-tight focus:outline-none focus:bg-white focus:border-gray-500"
+                                            onchange={_ctx.link().callback(|e: Event| {
+                                                let select = e.target_dyn_into::<HtmlSelectElement>().expect("event target should be a select element");
+                                                let value = select.value();
+                                                AddFilterMessage::CategoryChanged(FilterGroup::values().into_iter().find(|group| group.as_str() == value).expect("invalid category"))
+                                            })}
+                                        >
+                                            { options }
+                                        </select>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <div class="w-32">
+                                            <label class="font-bold">{"EasyList URL"}</label>
+                                        </div>
+                                        <input
+                                            type="text"
+                                            class="flex-1 bg-white border border-gray-300 text-gray-700 py-2 px-4 rounded leading-tight focus:outline-none focus:bg-white focus:border-gray-500"
+                                            value={self.url.clone()}
+                                            oninput={_ctx.link().callback(|e: InputEvent| {
+                                                let input = e.target_dyn_into::<HtmlInputElement>().expect("event target should be an input element");
+                                                AddFilterMessage::UrlChanged(input.value())
+                                            })}
+                                        />
+                                    </div>
+                                    <div class="flex space-x-4">
+                                        <button onclick={_ctx.link().callback(move |_| AddFilterMessage::Save(url.clone(), category.clone()))} class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded z-60">{"Save"}</button>
+                                        <button onclick={_ctx.link().callback(|_| AddFilterMessage::Close)} class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded z-60">{"Cancel"}</button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     }
                 } else {
@@ -373,11 +443,9 @@ impl Component for Filters {
                 <>
                     { title }
                     {success_banner}
-                    <div class="mb-5">
+                    <div class="mb-5 flex space-x-4">
+                        <AddFilterComponent state={save_button::SaveButtonState::Enabled}/>
                         <save_button::SaveButton state={save_button_state} onclick={save_callback} />
-                    </div>
-                    <div class="mb-5">
-                        <AddFilterComponent />
                     </div>
                     { render_category(FilterGroup::Default, filter_configuration) }
                     { render_category(FilterGroup::Ads, filter_configuration) }
