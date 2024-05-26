@@ -19,7 +19,6 @@ use sha2::{Digest, Sha256};
 use hex;
 use url::Url;
 
-const BASE_FILTERS_URL: &str = "https://filters.privaxy.net";
 const CONFIGURATION_DIRECTORY_NAME: &str = ".privaxy";
 const CONFIGURATION_FILE_NAME: &str = "config";
 const FILTERS_DIRECTORY_NAME: &str = "filters";
@@ -41,12 +40,12 @@ pub enum FilterGroup {
 impl ToString for FilterGroup {
     fn to_string(&self) -> String {
         match self {
-            FilterGroup::Default => "Default",
-            FilterGroup::Regional => "Regional",
-            FilterGroup::Ads => "Ads",
-            FilterGroup::Privacy => "Privacy",
-            FilterGroup::Malware => "Malware",
-            FilterGroup::Social => "Social",
+            FilterGroup::Default => "default",
+            FilterGroup::Regional => "regional",
+            FilterGroup::Ads => "ads",
+            FilterGroup::Privacy => "privacy",
+            FilterGroup::Malware => "malware",
+            FilterGroup::Social => "social",
         }
         .to_string()
     }

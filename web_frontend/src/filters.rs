@@ -1,8 +1,9 @@
-use crate::{save_button, submit_banner,get_api_host};
+use crate::{save_button, submit_banner, get_api_host};
 use reqwasm::http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::de::IoRead;
 use serde_json::StreamDeserializer;
+use serde_with::{serde_as, DisplayFromStr};
 use std::fmt::Debug;
 use std::io::Cursor;
 use wasm_bindgen_futures::spawn_local;
@@ -10,8 +11,9 @@ use yew::{html, Callback, Component, Context, Html};
 use yew::prelude::*;
 use web_sys::{HtmlInputElement, HtmlSelectElement};
 use yew::InputEvent;
+use url::Url;
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 enum FilterGroup {
     Default,
     Regional,
@@ -26,7 +28,6 @@ pub struct Props {
     pub state: save_button::SaveButtonState,
 }
 
-
 impl FilterGroup {
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -38,6 +39,7 @@ impl FilterGroup {
             FilterGroup::Social => "Social",
         }
     }
+
     pub fn values() -> Vec<Self> {
         vec![
             FilterGroup::Default,
@@ -83,7 +85,35 @@ impl Component for AddFilterComponent {
             AddFilterMessage::Open => self.is_open = true,
             AddFilterMessage::Close => self.is_open = false,
             AddFilterMessage::Save(url, category) => {
-                // Handle save logic here
+                if let Ok(parsed_url) = Url::parse(&url) {
+                    let request_body = AddFilterRequest {
+                        enabled: true,
+                        title: url.clone(),
+                        group: category,
+                        url: parsed_url,
+                    };
+
+                    let request = Request::post(&format!("http://{}/filters", get_api_host()))
+                        .header("Content-Type", "application/json")
+                        .body(serde_json::to_string(&request_body).unwrap());
+
+                    spawn_local(async move {
+                        match request.send().await {
+                            Ok(response) => {
+                                if response.ok() {
+                                    log::info!("Filter added successfully");
+                                } else {
+                                    log::error!("Failed to add filter: {:?}", response.status());
+                                }
+                            }
+                            Err(err) => {
+                                log::error!("Request error: {:?}", err);
+                            }
+                        }
+                    });
+                } else {
+                    log::error!("Invalid URL: {}", url);
+                }
                 self.is_open = false;
             }
             AddFilterMessage::CategoryChanged(category) => self.category = category,
@@ -117,16 +147,16 @@ impl Component for AddFilterComponent {
             "focus:ring-offset-2",
             "focus:ring-offset-gray-100",
         );
-    
+
         let properties = _ctx.props();
-    
+
         if properties.state == save_button::SaveButtonState::Disabled
             || properties.state == save_button::SaveButtonState::Loading
         {
             save_button_classes.push("opacity-50");
             save_button_classes.push("cursor-not-allowed");
         }
-    
+
         let button_text = if properties.state == save_button::SaveButtonState::Loading {
             "Loading..."
         } else {
@@ -196,6 +226,16 @@ impl Component for AddFilterComponent {
     }
 }
 
+#[serde_as]
+#[derive(Serialize)]
+struct AddFilterRequest {
+    enabled: bool,
+    title: String,
+    group: FilterGroup,
+    #[serde_as(as = "DisplayFromStr")]
+    url: Url,
+}
+
 #[derive(Deserialize, Clone, PartialEq, Eq)]
 pub struct Filter {
     enabled: bool,
@@ -203,6 +243,7 @@ pub struct Filter {
     group: FilterGroup,
     file_name: String,
 }
+
 impl std::fmt::Display for Filter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -212,6 +253,7 @@ impl std::fmt::Display for Filter {
         )
     }
 }
+
 #[allow(non_snake_case)]
 #[derive(Serialize)]
 pub struct FilterStatusChangeRequest {
