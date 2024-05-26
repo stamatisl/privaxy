@@ -1,7 +1,5 @@
 use crate::{
-    blocker::AdblockRequester,
-    ca::{self, make_ca_certificate},
-    proxy::exclusions::LocalExclusionStore,
+    blocker::AdblockRequester, ca::make_ca_certificate, proxy::exclusions::LocalExclusionStore,
 };
 use dirs::home_dir;
 use futures::future::{try_join_all, AbortHandle, Abortable};
