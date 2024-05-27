@@ -569,18 +569,29 @@ async fn get_filter(
     filter: &mut Filter,
     http_client: &reqwest::Client,
 ) -> ConfigurationResult<String> {
-    let response = http_client.get(filter.url.as_str()).send().await?;
-
-    if !response.status().is_success() {
-        filter.enabled = false;
-        return Err(ConfigurationError::FilterError(format!(
-            "Failed to fetch filter content: {}",
-            response.status()
-        )));
-    }
-
-    let filter_content = response.text().await?;
-    Ok(filter_content)
+    let response = match http_client.get(filter.url.as_str()).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                match response.text().await {
+                    Ok(content) => content,
+                    Err(err) => {
+                        log::error!("Failed to read filter content: {err}");
+                        return Err(ConfigurationError::FilterError(format!("Failed to read filter content: {}", err)))
+                    }
+                }
+            } else {
+                log::error!("Failed to fetch filter content: {}", response.status());
+                return Err(ConfigurationError::FilterError(format!("Failed to fetch filter content: {}", response.status())));
+            }
+        },
+        Err(err) => {
+            log::error!("Failed to fetch filter URL: {err}");
+            return Err(ConfigurationError::FilterError(format!(
+                "Failed to fetch filter URL: {}",
+                err)));
+        }
+    };
+    Ok(response)
 }
 
 pub struct ConfigurationUpdater {

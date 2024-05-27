@@ -88,31 +88,6 @@ pub async fn add_filter(
 ) -> Result<impl warp::Reply, Infallible> {
     let _guard = configuration_save_lock.lock().await;
 
-    // Attempt to retrieve the file from the provided URL
-    let filter_content = match http_client.get(add_filter_request.url.as_str()).send().await {
-        Ok(response) => {
-            if response.status().is_success() {
-                match response.text().await {
-                    Ok(content) => content,
-                    Err(err) => {
-                        log::error!("Failed to read filter content: {err}");
-                        return Ok(get_error_response(err));
-                    }
-                }
-            } else {
-                log::error!("Failed to fetch filter content: {}", response.status());
-                return Ok(Response::builder()
-                    .status(http::StatusCode::BAD_REQUEST)
-                    .body(format!("Failed to fetch filter content: {}", response.status()))
-                    .unwrap());
-            }
-        },
-        Err(err) => {
-            log::error!("Failed to fetch filter URL: {err}");
-            return Ok(get_error_response(err));
-        }
-    };
-
     // Read the current configuration
     let mut configuration = match Configuration::read_from_home(http_client.clone()).await {
         Ok(configuration) => configuration,
