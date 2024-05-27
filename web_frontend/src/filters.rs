@@ -1,4 +1,5 @@
 use crate::{save_button, submit_banner, get_api_host};
+use crate::filterlists::SearchFilterList;
 use reqwasm::http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::de::IoRead;
@@ -60,6 +61,17 @@ pub enum AddFilterMessage {
     UrlChanged(String),
     TitleChanged(String),
 }
+
+#[serde_as]
+#[derive(Serialize)]
+struct AddFilterRequest {
+    enabled: bool,
+    title: String,
+    group: FilterGroup,
+    #[serde_as(as = "DisplayFromStr")]
+    url: Url,
+}
+
 
 pub struct AddFilterComponent {
     link: yew::html::Scope<Self>,
@@ -250,15 +262,6 @@ impl Component for AddFilterComponent {
     }
 }
 
-#[serde_as]
-#[derive(Serialize)]
-struct AddFilterRequest {
-    enabled: bool,
-    title: String,
-    group: FilterGroup,
-    #[serde_as(as = "DisplayFromStr")]
-    url: Url,
-}
 
 #[derive(Deserialize, Clone, PartialEq, Eq)]
 pub struct Filter {
@@ -511,6 +514,7 @@ impl Component for Filters {
                     {success_banner}
                     <div class="mb-5 flex space-x-4">
                         <AddFilterComponent state={save_button::SaveButtonState::Enabled}/>
+                        <SearchFilterList />
                         <save_button::SaveButton state={save_button_state} onclick={save_callback} />
                     </div>
                     { render_category(FilterGroup::Default, filter_configuration) }
