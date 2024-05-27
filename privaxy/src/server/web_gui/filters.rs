@@ -99,6 +99,13 @@ pub async fn add_filter(
 
     // Clone the URL to avoid moving the original value
     let filter_url = add_filter_request.url.clone();
+    if configuration.filters.iter().any(|filter| filter.url == add_filter_request.url) {
+        log::warn!("Filter with URL {} already exists", add_filter_request.url);
+        return Ok(Response::builder()
+            .status(http::StatusCode::CONFLICT)
+            .body("Filter already exists".to_string())
+            .unwrap());
+    }
 
     // Add the new filter to the configuration
     let mut new_filter = Filter {
