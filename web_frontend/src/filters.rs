@@ -55,15 +55,17 @@ impl FilterGroup {
 pub enum AddFilterMessage {
     Open,
     Close,
-    Save(String, FilterGroup),
+    Save(String, String, FilterGroup),
     CategoryChanged(FilterGroup),
     UrlChanged(String),
+    TitleChanged(String),
 }
 
 pub struct AddFilterComponent {
     link: yew::html::Scope<Self>,
     is_open: bool,
     category: FilterGroup,
+    title: String,
     url: String,
 }
 
@@ -77,6 +79,7 @@ impl Component for AddFilterComponent {
             is_open: false,
             category: FilterGroup::Default,
             url: String::new(),
+            title: String::new()
         }
     }
 
@@ -84,11 +87,11 @@ impl Component for AddFilterComponent {
         match msg {
             AddFilterMessage::Open => self.is_open = true,
             AddFilterMessage::Close => self.is_open = false,
-            AddFilterMessage::Save(url, category) => {
+            AddFilterMessage::Save(url, title, category) => {
                 if let Ok(parsed_url) = Url::parse(&url) {
                     let request_body = AddFilterRequest {
                         enabled: true,
-                        title: url.clone(),
+                        title: if title.is_empty() { self.url.clone() } else { title },
                         group: category,
                         url: parsed_url,
                     };
@@ -118,6 +121,9 @@ impl Component for AddFilterComponent {
             }
             AddFilterMessage::CategoryChanged(category) => self.category = category,
             AddFilterMessage::UrlChanged(url) => self.url = url,
+            AddFilterMessage::TitleChanged(title) => {
+                self.title = title;
+            }
         }
         true
     }
@@ -162,13 +168,17 @@ impl Component for AddFilterComponent {
         } else {
             "Add filter"
         };
+
         let options: Html = FilterGroup::values().into_iter().map(|group| {
             html! {
                 <option value={group.as_str()}>{group.as_str()}</option>
             }
         }).collect();
+
         let url = self.url.clone();
         let category = self.category.clone();
+        let title = self.title.clone();
+
         html! {
             <>
                 <button onclick={self.link.callback(|_| AddFilterMessage::Open)} type="button" class={classes!(save_button_classes, "mt-5" )}>
@@ -198,6 +208,20 @@ impl Component for AddFilterComponent {
                                     </div>
                                     <div class="flex items-center">
                                         <div class="w-32">
+                                            <label class="font-bold">{"Title"}</label>
+                                        </div>
+                                        <input
+                                            type="text"
+                                            class="flex-1 bg-white border border-gray-300 text-gray-700 py-2 px-4 rounded leading-tight focus:outline-none focus:bg-white focus:border-gray-500"
+                                            value={self.title.clone()}
+                                            oninput={_ctx.link().callback(|e: InputEvent| {
+                                                let input = e.target_dyn_into::<HtmlInputElement>().expect("event target should be an input element");
+                                                AddFilterMessage::TitleChanged(input.value())
+                                            })}
+                                        />
+                                    </div>
+                                    <div class="flex items-center">
+                                        <div class="w-32">
                                             <label class="font-bold">{"EasyList URL"}</label>
                                         </div>
                                         <input
@@ -211,7 +235,7 @@ impl Component for AddFilterComponent {
                                         />
                                     </div>
                                     <div class="flex space-x-4">
-                                        <button onclick={_ctx.link().callback(move |_| AddFilterMessage::Save(url.clone(), category.clone()))} class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded z-60">{"Save"}</button>
+                                        <button onclick={_ctx.link().callback(move |_| AddFilterMessage::Save(url.clone(), title.clone(), category.clone()))} class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded z-60">{"Save"}</button>
                                         <button onclick={_ctx.link().callback(|_| AddFilterMessage::Close)} class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded z-60">{"Cancel"}</button>
                                     </div>
                                 </div>
