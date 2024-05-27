@@ -3,10 +3,7 @@ use crate::save_button::BASE_BUTTON_CSS;
 use reqwasm::http::Request;
 
 use serde::{Deserialize, Serialize};
-use serde_json::de::IoRead;
-use serde_json::StreamDeserializer;
 use std::fmt::Debug;
-use std::io::Cursor;
 use wasm_bindgen_futures::spawn_local;
 use yew::{html, Component, Context, Html};
 use yew::prelude::*;
@@ -34,8 +31,7 @@ fn default_description() -> String {
     "No description".to_string()
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
-pub struct FilterLists(Vec<FilterEntry>);
+type FilterLists = Vec<FilterEntry>;
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -87,8 +83,7 @@ pub struct FilterSoftware {
     syntax_ids: Vec<u64>,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct FilterSoftwareList(Vec<FilterSoftware>);
+type FilterSoftwareList = Vec<FilterSoftware>;
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -100,9 +95,25 @@ pub struct FilterListSyntax {
     software_ids: Vec<u64>,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Clone)]
-pub struct FilterListSyntaxList(Vec<FilterListSyntax>);
+type FilterListSyntaxes = Vec<FilterListSyntax>;
 
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FilterLicense {
+    id: u64,
+    name: String,
+    #[serde(default)]
+    url: Option<String>,
+    #[serde(default)]
+    permit_modifications: Option<bool>,
+    #[serde(default)]
+    permit_distribution: Option<bool>,
+    #[serde(default)]
+    permit_commercial_use: Option<bool>,
+    filter_list_ids: Vec<u64>,
+}
+
+type FilterLicenses = Vec<FilterLicense>;
 
 pub enum SearchFilterMessage {
     Open,
@@ -115,18 +126,35 @@ pub enum SearchFilterMessage {
     Error(String),
     NextPage,
     PreviousPage,
+    LanguagesLoaded(FilterLanguages),
+    LicensesLoaded(FilterLicenses),
 }
 
 pub struct SearchFilterList {
     link: yew::html::Scope<Self>,
     is_open: bool,
-    filters: Vec<FilterEntry>,
+    filters: FilterLists,
     selected_filter: Option<FilterEntry>,
     filter_query: String,
     loading: bool,
+    languages: FilterLanguages,
+    licenses: FilterLicenses,
     current_page: usize,
     results_per_page: usize,
 }
+
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FilterLanguage {
+    id: u64,
+    iso6391: String,
+    name: String,
+    filter_list_ids: Vec<u64>
+}
+
+type FilterLanguages = Vec<FilterLanguage>;
+
+
 
 impl Component for SearchFilterList {
     type Message = SearchFilterMessage;
@@ -136,10 +164,12 @@ impl Component for SearchFilterList {
         Self {
             link: _ctx.link().clone(),
             is_open: false,
-            filters: vec![],
+            filters: FilterLists::new(),
+            languages: FilterLanguages::new(),
+            licenses: FilterLicenses::new(),
             selected_filter: None,
             filter_query: String::new(),
-            loading: false,
+            loading: true,
             current_page: 1,
             results_per_page: 10,
         }
@@ -156,18 +186,33 @@ impl Component for SearchFilterList {
             SearchFilterMessage::FilterChanged(query) => self.filter_query = query,
             SearchFilterMessage::SelectFilter(filter) => self.selected_filter = filter,
             SearchFilterMessage::LoadFilters => {
-                self.loading = true;
-                let link = self.link.clone();
+                if self.loading {
+                    let link = self.link.clone();
                 spawn_local(async move {
+                    match fetch_languages(link.clone()).await {
+                        Ok(_) => log::info!("Languages loaded successfully"),
+                        Err(err) => link.send_message(SearchFilterMessage::Error(err)),
+                    };
                     match fetch_filter_lists(link.clone()).await {
                         Ok(_) => log::info!("Filters loaded successfully"),
                         Err(err) => link.send_message(SearchFilterMessage::Error(err)),
-                    }
+                    };
+                    match fetch_licenses(link.clone()).await {
+                        Ok(_) => log::info!("Licenses loaded successfully"),
+                        Err(err) => link.send_message(SearchFilterMessage::Error(err)),
+                    };
                 });
+            }
             },
             SearchFilterMessage::FiltersLoaded(filter) => {
                 self.filters.push(filter);
                 self.loading = false;
+            },
+            SearchFilterMessage::LanguagesLoaded(langs ) => {
+                self.languages = langs.clone();
+            },
+            SearchFilterMessage::LicensesLoaded(licenses) => {
+                self.licenses = licenses.clone();
             },
             SearchFilterMessage::Error(error) => {
                 log::error!("Error loading filters: {}", error);
@@ -352,13 +397,21 @@ impl SearchFilterList {
     }
 
     fn get_language_name(&self, language_ids: Vec<u64>) -> String {
-        // todo: Implement logic to get the language name by IDs
-        "English".to_string() // Placeholder
+        self.languages.iter()
+            .filter(|lang| language_ids.contains(&lang.id))
+            .map(|lang| lang.name.clone())
+            .collect::<Vec<String>>()
+            .join(", ")
     }
 
     fn get_license_name(&self, license_id: u64) -> String {
-        // todo: Implement logic to get the license name by ID
-        "MIT".to_string() // Placeholder
+        // Retrieve the license(s) name from the licenses list, given the license ID
+        // and join them into a single string separated by commas
+        self.licenses.iter()
+            .filter(|license| license.id == license_id)
+            .map(|license| license.name.clone())
+            .collect::<Vec<String>>()
+            .join(", ")
     }
 }
 
@@ -366,34 +419,57 @@ impl SearchFilterList {
 async fn fetch_filter_lists(link: Scope<SearchFilterList>) -> Result<(), String> {
     // dont know what else is supported
     let software_list = fetch_software().await?;
-    let ublock_origin = software_list.0.iter().find(|software| software.name == "uBlock Origin")
+    let ublock_origin = software_list.iter().find(|software| software.name == "uBlock Origin")
         .ok_or("no clue")?;
-
-    let response = Request::get("https://filterlists.com/api/directory/lists")
-        .send()
-        .await
-        .map_err(|err| err.to_string())?;
+    match _fetch::<FilterLists>("https://filterlists.com/api/directory/lists").await {
+        Ok(filter_lists) => {
+            for filter in filter_lists.iter().filter(|filter| {
+                !filter.syntax_ids.is_empty() && filter.syntax_ids.iter().any(|id| ublock_origin.syntax_ids.contains(id))
+            }) {
+                link.send_message(SearchFilterMessage::FiltersLoaded(filter.clone()));
+            }
+        },
+        Err(err) => return Err(err),
+    };
     
-    if response.ok() {
-        let body = response.text().await.map_err(|err| err.to_string())?;
-        log::debug!("Raw response body: {}", body);
+    Ok(())
+   
+    }
 
-        let filters: Vec<FilterEntry> = serde_json::from_str(&body).map_err(|err| err.to_string())?;
+async fn fetch_licenses(link: Scope<SearchFilterList>) -> Result<(), String> {
+    match _fetch::<FilterLicenses>("https://filterlists.com/api/directory/licenses").await {
+        Ok(licenses) =>  {
+            link.send_message(SearchFilterMessage::LicensesLoaded(licenses));
+            Ok(())
+        },
+        Err(err) => Err(err),
 
-        for filter in filters.into_iter().filter(|filter| {
-            !filter.syntax_ids.is_empty() && filter.syntax_ids.iter().any(|id| ublock_origin.syntax_ids.contains(id))
-        })
-         {
-            link.send_message(SearchFilterMessage::FiltersLoaded(filter));
-        }
-        Ok(())
-    } else {
-        Err(format!("Failed to fetch: {}", response.status_text()))
     }
 }
 
 async fn fetch_software() -> Result<FilterSoftwareList, String> {
-    let response = Request::get("https://filterlists.com/api/directory/software")
+    match _fetch::<FilterSoftwareList>("https://filterlists.com/api/directory/software").await {
+        Ok(software_list) => Ok(software_list),
+        Err(err) => Err(err),
+    
+    }
+}
+
+async fn fetch_languages(link: Scope<SearchFilterList>) -> Result<(), String> {
+   match _fetch::<FilterLanguages>("https://filterlists.com/api/directory/languages").await {
+    Ok(languages) => {
+            link.send_message(SearchFilterMessage::LanguagesLoaded(languages));
+            Ok(())
+    },
+    Err(err) => return Err(err),
+   }
+}
+
+async fn _fetch<T>(url: &str) -> Result<T, String>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    let response = Request::get(url)
         .send()
         .await
         .map_err(|err| err.to_string())?;
@@ -402,10 +478,9 @@ async fn fetch_software() -> Result<FilterSoftwareList, String> {
         let body = response.text().await.map_err(|err| err.to_string())?;
         log::debug!("Raw response body: {}", body);
 
-        // Deserialize the JSON array
-        let syntaxes: FilterSoftwareList = serde_json::from_str(&body).map_err(|err| err.to_string())?;
+        let syntaxes: T = serde_json::from_str(&body).map_err(|err| err.to_string())?;
         return Ok(syntaxes)
     } else {
-        Err(format!("Failed to fetch: {}", response.status_text()))
+        Err(format!("Failed to fetch from {}: {}", url, response.status_text()))
     }
 }
