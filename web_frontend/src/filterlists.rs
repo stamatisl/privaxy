@@ -1,0 +1,370 @@
+
+use crate::save_button::BASE_BUTTON_CSS;
+use reqwasm::http::Request;
+
+use serde::{Deserialize, Serialize};
+use serde_json::de::IoRead;
+use serde_json::StreamDeserializer;
+use std::fmt::Debug;
+use std::io::Cursor;
+use wasm_bindgen_futures::spawn_local;
+use yew::{html, Component, Context, Html};
+use yew::prelude::*;
+use web_sys::HtmlInputElement;
+use yew::InputEvent;
+use yew::html::Scope;
+
+
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct FilterEntry {
+    id: u64,
+    name: String,
+    #[serde(default = "default_description")]
+    description: String,
+    license_id: u64,
+    syntax_ids: Vec<u64>,
+    language_ids: Vec<u64>,
+    tag_ids: Vec<u64>,
+    #[serde(default)]
+    primary_view_url: Option<String>,
+    maintainer_ids: Vec<u64>,
+}
+fn default_description() -> String {
+    "No description".to_string()
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+pub struct FilterLists(Vec<FilterEntry>);
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilterViewURL {
+    segment_number: u32,
+    primariness: u32,
+    url: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilterListDetail {
+    id: u64,
+    name: String,
+    description: String,
+    license_id: u64,
+    syntax_ids: Vec<u64>,
+    language_ids: Vec<u64>,
+    tag_ids: Vec<u64>,
+    primary_view_url: String,
+    maintainer_ids: Vec<u64>,
+    view_urls: Vec<FilterViewURL>,
+    home_url: String,
+    onion_url: String,
+    policy_url: String,
+    submission_url: String,
+    issues_url: String,
+    forum_url: String,
+    chat_url: String,
+    email_address: String,
+    donate_url: String,
+    upstream_filter_list_ids: Vec<u64>,
+    include_in_filter_list_ids: Vec<u64>,
+    includes_filter_list_ids: Vec<u64>,
+    dependency_filter_list_ids: Vec<u64>,
+    dependent_filter_list_ids: Vec<u64>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilterListSoftware {
+    id: u64,
+    name: String,
+    description: String,
+    license_id: u64,
+    syntax_ids: Vec<u64>,
+    language_ids: Vec<u64>,
+    tag_ids: Vec<u64>,
+    primary_view_url: String,
+    maintainer_ids: Vec<u64>,
+}
+
+pub struct FilterListSoftwareList(Vec<FilterListSoftware>);
+
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FilterListSyntax {
+    id: u64,
+    name: String,
+    url: String,
+    filter_list_ids: Vec<u64>,
+    software_ids: Vec<u64>,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+pub struct FilterListSyntaxList(Vec<FilterListSyntax>);
+
+
+pub enum SearchFilterMessage {
+    Open,
+    Close,
+    Save,
+    FilterChanged(String),
+    SelectFilter(Option<FilterEntry>),
+    LoadFilters,
+    FiltersLoaded(FilterEntry),
+    Error(String),
+    NextPage,
+    PreviousPage,
+}
+
+pub struct SearchFilterList {
+    link: yew::html::Scope<Self>,
+    is_open: bool,
+    filters: Vec<FilterEntry>,
+    selected_filter: Option<FilterEntry>,
+    filter_query: String,
+    loading: bool,
+    current_page: usize,
+    results_per_page: usize,
+}
+
+impl Component for SearchFilterList {
+    type Message = SearchFilterMessage;
+    type Properties = ();
+
+    fn create(_ctx: &Context<Self>) -> Self {
+        Self {
+            link: _ctx.link().clone(),
+            is_open: false,
+            filters: vec![],
+            selected_filter: None,
+            filter_query: String::new(),
+            loading: false,
+            current_page: 1,
+            results_per_page: 10,
+        }
+    }
+    
+
+    fn update(&mut self, _ctx: &Context<Self>, msg: SearchFilterMessage) -> bool {
+        match msg {
+            SearchFilterMessage::Open => {
+                self.is_open = true;
+                self.link.send_message(SearchFilterMessage::LoadFilters);
+            },
+            SearchFilterMessage::Close => self.is_open = false,
+            SearchFilterMessage::FilterChanged(query) => self.filter_query = query,
+            SearchFilterMessage::SelectFilter(filter) => self.selected_filter = filter,
+            SearchFilterMessage::LoadFilters => {
+                self.loading = true;
+                let link = self.link.clone();
+                spawn_local(async move {
+                    match fetch_filter_lists(link.clone()).await {
+                        Ok(_) => log::info!("Filters loaded successfully"),
+                        Err(err) => link.send_message(SearchFilterMessage::Error(err)),
+                    }
+                });
+            },
+            SearchFilterMessage::FiltersLoaded(filter) => {
+                self.filters.push(filter);
+                self.loading = false;
+            },
+            SearchFilterMessage::Error(error) => {
+                log::error!("Error loading filters: {}", error);
+                self.loading = false;
+            },
+            SearchFilterMessage::Save => {
+                if let Some(filter) = &self.selected_filter {
+                    // todo: add logic to save the selected filter to the database using the API
+                    // similar to the `AddFilterComponent` save logic
+                }
+                self.is_open = false;
+            },
+            SearchFilterMessage::NextPage => {
+                if self.current_page < (self.filters.len() as f64 / self.results_per_page as f64).ceil() as usize {
+                    self.current_page += 1;
+                }
+            },
+            SearchFilterMessage::PreviousPage => {
+                if self.current_page > 1 {
+                    self.current_page -= 1;
+                }
+            },
+        }
+        true
+    }
+    
+
+    fn view(&self, _ctx: &Context<Self>) -> Html {
+        let save_button_classes = classes!(
+            BASE_BUTTON_CSS.clone().to_vec(),
+            "focus:ring-green-500",
+            "bg-green-600",
+            "hover:bg-green-700",
+        );
+        let search_button_classes = classes!(
+            BASE_BUTTON_CSS.clone().to_vec(),
+            "bg-blue-600",
+            "hover:bg-blue-700",
+        );
+    
+        
+        let filtered_filters: Vec<&FilterEntry> = self.filters.iter()
+        .filter(|filter| filter.name.contains(&self.filter_query))
+        .collect();
+        let total_pages = (filtered_filters.len() as f64 / self.results_per_page as f64).ceil() as usize;
+        let start_index = (self.current_page - 1) * self.results_per_page;
+        let paginated_filters = filtered_filters.into_iter().skip(start_index).take(self.results_per_page);
+
+        let prev_button_classes = classes!(
+            "bg-gray-500",
+            "hover:bg-gray-700",
+            "text-white",
+            "font-bold",
+            "py-2",
+            "px-4",
+            "rounded",
+            if self.current_page == 1 { "opacity-50 cursor-not-allowed" } else { "" },
+        );
+    
+        let next_button_classes = classes!(
+            "bg-gray-500",
+            "hover:bg-gray-700",
+            "text-white",
+            "font-bold",
+            "py-2",
+            "px-4",
+            "rounded",
+            if self.current_page == total_pages { "opacity-50 cursor-not-allowed" } else { "" },
+        );
+        html! {
+            <>
+            <button onclick={self.link.callback(|_| SearchFilterMessage::Open)} class={classes!(search_button_classes, "mt-5")}>
+                <svg xmlns="http://www.w3.org/2000/svg" class="-ml-0.5 mr-2 h-5 w-5" fill="none" viewBox="0 0 490.4 490.4" stroke="currentColor">
+                    <path fill="white" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M484.1,454.796l-110.5-110.6c29.8-36.3,47.6-82.8,47.6-133.4c0-116.3-94.3-210.6-210.6-210.6S0,94.496,0,210.796 s94.3,210.6,210.6,210.6c50.8,0,97.4-18,133.8-48l110.5,110.5c12.9,11.8,25,4.2,29.2,0C492.5,475.596,492.5,463.096,484.1,454.796z M41.1,210.796c0-93.6,75.9-169.5,169.5-169.5s169.6,75.9,169.6,169.5s-75.9,169.5-169.5,169.5S41.1,304.396,41.1,210.796z"/>
+                </svg>
+            {"Search filterlist.com"}
+            </button>
+                { if self.is_open {
+                    html! {
+                        <div class="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50">
+                            <div class="bg-white p-6 rounded-lg shadow-lg z-60">
+                                <div class="flex flex-col space-y-4">
+                                    <input type="text" placeholder="Search by name" class="border border-gray-300 p-2 rounded"
+                                        value={self.filter_query.clone()}
+                                        oninput={_ctx.link().callback(|e: InputEvent| {
+                                            let input = e.target_dyn_into::<HtmlInputElement>().expect("input element");
+                                            SearchFilterMessage::FilterChanged(input.value())
+                                        })}
+                                    />
+                                    <table class="min-w-full bg-white">
+                                        <thead>
+                                            <tr>
+                                                <th class="py-2">{"Name"}</th>
+                                                <th class="py-2">{"Description"}</th>
+                                                <th class="py-2">{"Language"}</th>
+                                                <th class="py-2">{"License"}</th>
+                                                <th class="py-2">{"Select"}</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            { for paginated_filters.map(|filter| self.view_filter_row(filter)) }
+                                        </tbody>
+                                    </table>
+                                    <div class="flex justify-between mt-4">
+                                        <button 
+                                            onclick={self.link.callback(|_| SearchFilterMessage::PreviousPage)} 
+                                            class={prev_button_classes}
+                                            disabled={self.current_page == 1}>
+                                            {"Previous"}
+                                        </button>
+                                    <span>{"Page "} {self.current_page} {" of "} {total_pages}</span>
+                                    <button 
+                                        onclick={self.link.callback(|_| SearchFilterMessage::NextPage)} 
+                                        class={next_button_classes}
+                                        disabled={self.current_page == total_pages}>
+                                    {"Next"}
+                                </button>
+                                </div>
+                                    <div class="flex space-x-4">
+                                        <button onclick={_ctx.link().callback(|_| SearchFilterMessage::Save)} class={save_button_classes.clone()} disabled={self.selected_filter.is_none()}>
+                                            {"Save"}
+                                        </button>
+                                        <button onclick={_ctx.link().callback(|_| SearchFilterMessage::Close)} class="bg-red-600 focus:ring-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+                                            {"Cancel"}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                } else {
+                    html! {}
+                }}
+            </>
+        }
+    }
+    
+    
+}
+
+
+impl SearchFilterList {
+    fn view_filter_row(&self, filter: &FilterEntry) -> Html {
+        let selected = self.selected_filter.as_ref().map(|f| f.id) == Some(filter.id);
+        let filter_clone = filter.clone(); // Clone the filter to move into the closure
+
+        html! {
+            <tr>
+                <td class="border px-4 py-2">
+                    { if let Some(url) = &filter.primary_view_url {
+                        html! { <a href={url.clone()} target="_blank" class="text-blue-600 underline"> { &filter.name } </a> }
+                    } else {
+                        html! { &filter.name }
+                    }}
+                </td>
+                <td class="border px-4 py-2">{ &filter.description }</td>
+                <td class="border px-4 py-2">{ self.get_language_name(filter.language_ids.clone()) }</td>
+                <td class="border px-4 py-2">{ self.get_license_name(filter.license_id) }</td>
+                <td class="border px-4 py-2 text-center">
+                    <input type="checkbox" checked={selected} onclick={self.link.callback(move |_| SearchFilterMessage::SelectFilter(Some(filter_clone.clone())))}/>
+                </td>
+            </tr>
+        }
+    }
+
+    fn get_language_name(&self, language_ids: Vec<u64>) -> String {
+        // todo: Implement logic to get the language name by IDs
+        "English".to_string() // Placeholder
+    }
+
+    fn get_license_name(&self, license_id: u64) -> String {
+        // todo: Implement logic to get the license name by ID
+        "MIT".to_string() // Placeholder
+    }
+}
+
+
+
+async fn fetch_filter_lists(link: Scope<SearchFilterList>) -> Result<(), String> {
+    let response = Request::get("https://filterlists.com/api/directory/lists")
+        .send()
+        .await
+        .map_err(|err| err.to_string())?;
+    
+    if response.ok() {
+        let body = response.text().await.map_err(|err| err.to_string())?;
+        log::debug!("Raw response body: {}", body);
+
+        // Deserialize the JSON array
+        let filters: Vec<FilterEntry> = serde_json::from_str(&body).map_err(|err| err.to_string())?;
+
+        // Send each filter as a message
+        for filter in filters {
+            link.send_message(SearchFilterMessage::FiltersLoaded(filter));
+        }
+        Ok(())
+    } else {
+        Err(format!("Failed to fetch: {}", response.status_text()))
+    }
+}

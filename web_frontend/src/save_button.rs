@@ -1,6 +1,29 @@
 use web_sys::MouseEvent;
 use yew::{classes, html, Callback, Component, Context, Html, Properties};
 
+pub const BASE_BUTTON_CSS: [&'static str; 20]= [
+    "inline-flex",
+    "items-center",
+    "justify-center",
+    "px-4",
+    "py-2",
+    "border",
+    "transition",
+    "ease-in-out",
+    "duration-150",
+    "border-transparent",
+    "text-sm",
+    "text-sm",
+    "font-medium",
+    "rounded-md",
+    "shadow-sm",
+    "text-white",
+    "focus:outline-none",
+    "focus:ring-2",
+    "focus:ring-offset-2",
+    "focus:ring-offset-gray-100",
+];
+
 #[derive(PartialEq, Eq)]
 pub enum SaveButtonState {
     Loading,
