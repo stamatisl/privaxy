@@ -76,19 +76,19 @@ pub struct FilterListDetail {
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FilterListSoftware {
+pub struct FilterSoftware {
     id: u64,
     name: String,
-    description: String,
-    license_id: u64,
+    #[serde(default)]
+    home_url: Option<String>,
+    #[serde(default)]
+    download_url: Option<String>,
+    supports_abp_url_scheme: bool,
     syntax_ids: Vec<u64>,
-    language_ids: Vec<u64>,
-    tag_ids: Vec<u64>,
-    primary_view_url: String,
-    maintainer_ids: Vec<u64>,
 }
 
-pub struct FilterListSoftwareList(Vec<FilterListSoftware>);
+#[derive(Serialize, Deserialize)]
+pub struct FilterSoftwareList(Vec<FilterSoftware>);
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -215,7 +215,12 @@ impl Component for SearchFilterList {
         let total_pages = (filtered_filters.len() as f64 / self.results_per_page as f64).ceil() as usize;
         let start_index = (self.current_page - 1) * self.results_per_page;
         let paginated_filters = filtered_filters.into_iter().skip(start_index).take(self.results_per_page);
-
+        let cancel_button_classes = classes!(
+            BASE_BUTTON_CSS.clone().to_vec(),
+            "focus:ring-red-500",
+            "bg-red-600",
+            "hover:bg-red-700",
+        );
         let prev_button_classes = classes!(
             "bg-gray-500",
             "hover:bg-gray-700",
@@ -237,6 +242,11 @@ impl Component for SearchFilterList {
             "rounded",
             if self.current_page == total_pages { "opacity-50 cursor-not-allowed" } else { "" },
         );
+        let document = gloo_utils::document();
+        if let Some(body) = document.body() {
+            body.set_class_name(if self.is_open { "modal-open" } else { "" });
+        }
+        
         html! {
             <>
             <button onclick={self.link.callback(|_| SearchFilterMessage::Open)} class={classes!(search_button_classes, "mt-5")}>
@@ -248,8 +258,8 @@ impl Component for SearchFilterList {
                 { if self.is_open {
                     html! {
                         <div class="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50">
-                            <div class="bg-white p-6 rounded-lg shadow-lg z-60">
-                                <div class="flex flex-col space-y-4">
+                            <div class="bg-white p-6 rounded-lg shadow-lg z-60" style="width: 50vw; height: 80vh; overflow: hidden;">
+                                <div class="flex flex-col space-y-4" style="height: 100%;">
                                     <input type="text" placeholder="Search by name" class="border border-gray-300 p-2 rounded"
                                         value={self.filter_query.clone()}
                                         oninput={_ctx.link().callback(|e: InputEvent| {
@@ -257,20 +267,22 @@ impl Component for SearchFilterList {
                                             SearchFilterMessage::FilterChanged(input.value())
                                         })}
                                     />
-                                    <table class="min-w-full bg-white">
-                                        <thead>
-                                            <tr>
-                                                <th class="py-2">{"Name"}</th>
-                                                <th class="py-2">{"Description"}</th>
-                                                <th class="py-2">{"Language"}</th>
-                                                <th class="py-2">{"License"}</th>
-                                                <th class="py-2">{"Select"}</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            { for paginated_filters.map(|filter| self.view_filter_row(filter)) }
-                                        </tbody>
-                                    </table>
+                                    <div style="flex-grow: 1; overflow: auto;">
+                                        <table class="table-fixed bg-white">
+                                            <thead>
+                                                <tr style="height: 5vh;">
+                                                    <th class="py-2" style="width: 5vw;">{"Name"}</th>
+                                                    <th class="py-2" style="width: 10vw;">{"Description"}</th>
+                                                    <th class="py-2" style="width: 8vw;">{"Language"}</th>
+                                                    <th class="py-2" style="width: 8vw;">{"License"}</th>
+                                                    <th class="py-2" style="width: 2vw;">{"Select"}</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                { for paginated_filters.map(|filter| self.view_filter_row(filter)) }
+                                            </tbody>
+                                        </table>
+                                    </div>
                                     <div class="flex justify-between mt-4">
                                         <button 
                                             onclick={self.link.callback(|_| SearchFilterMessage::PreviousPage)} 
@@ -278,19 +290,19 @@ impl Component for SearchFilterList {
                                             disabled={self.current_page == 1}>
                                             {"Previous"}
                                         </button>
-                                    <span>{"Page "} {self.current_page} {" of "} {total_pages}</span>
-                                    <button 
-                                        onclick={self.link.callback(|_| SearchFilterMessage::NextPage)} 
-                                        class={next_button_classes}
-                                        disabled={self.current_page == total_pages}>
-                                    {"Next"}
-                                </button>
-                                </div>
+                                        <span>{"Page "} {self.current_page} {" of "} {total_pages}</span>
+                                        <button 
+                                            onclick={self.link.callback(|_| SearchFilterMessage::NextPage)} 
+                                            class={next_button_classes}
+                                            disabled={self.current_page == total_pages}>
+                                            {"Next"}
+                                        </button>
+                                    </div>
                                     <div class="flex space-x-4">
                                         <button onclick={_ctx.link().callback(|_| SearchFilterMessage::Save)} class={save_button_classes.clone()} disabled={self.selected_filter.is_none()}>
                                             {"Save"}
                                         </button>
-                                        <button onclick={_ctx.link().callback(|_| SearchFilterMessage::Close)} class="bg-red-600 focus:ring-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+                                        <button onclick={_ctx.link().callback(|_| SearchFilterMessage::Close)} class={cancel_button_classes}>
                                             {"Cancel"}
                                         </button>
                                     </div>
@@ -312,21 +324,27 @@ impl Component for SearchFilterList {
 impl SearchFilterList {
     fn view_filter_row(&self, filter: &FilterEntry) -> Html {
         let selected = self.selected_filter.as_ref().map(|f| f.id) == Some(filter.id);
-        let filter_clone = filter.clone(); // Clone the filter to move into the closure
+        let filter_clone = filter.clone();
 
         html! {
             <tr>
-                <td class="border px-4 py-2">
+                <td class="border px-4 py-2 overflow-hidden" style="height: 5vh; white-space: normal; text-overflow: ellipsis;">
                     { if let Some(url) = &filter.primary_view_url {
                         html! { <a href={url.clone()} target="_blank" class="text-blue-600 underline"> { &filter.name } </a> }
                     } else {
                         html! { &filter.name }
                     }}
                 </td>
-                <td class="border px-4 py-2">{ &filter.description }</td>
-                <td class="border px-4 py-2">{ self.get_language_name(filter.language_ids.clone()) }</td>
-                <td class="border px-4 py-2">{ self.get_license_name(filter.license_id) }</td>
-                <td class="border px-4 py-2 text-center">
+                <td class="border px-4 py-2 overflow-auto" style="height: 5vh; max-width: 10vw; white-space: normal;">
+                    { &filter.description }
+                </td>
+                <td class="border px-4 py-2 overflow-hidden" style="height: 5vh; white-space: nowrap; text-overflow: ellipsis;">
+                    { self.get_language_name(filter.language_ids.clone()) }
+                </td>
+                <td class="border px-4 py-2 overflow-hidden" style="height: 5vh; white-space: nowrap; text-overflow: ellipsis;">
+                    { self.get_license_name(filter.license_id) }
+                </td>
+                <td class="border px-4 py-2 text-center overflow-hidden" style="height: 5vh; white-space: nowrap; text-overflow: ellipsis;">
                     <input type="checkbox" checked={selected} onclick={self.link.callback(move |_| SearchFilterMessage::SelectFilter(Some(filter_clone.clone())))}/>
                 </td>
             </tr>
@@ -345,8 +363,12 @@ impl SearchFilterList {
 }
 
 
-
 async fn fetch_filter_lists(link: Scope<SearchFilterList>) -> Result<(), String> {
+    // dont know what else is supported
+    let software_list = fetch_software().await?;
+    let ublock_origin = software_list.0.iter().find(|software| software.name == "uBlock Origin")
+        .ok_or("no clue")?;
+
     let response = Request::get("https://filterlists.com/api/directory/lists")
         .send()
         .await
@@ -356,14 +378,33 @@ async fn fetch_filter_lists(link: Scope<SearchFilterList>) -> Result<(), String>
         let body = response.text().await.map_err(|err| err.to_string())?;
         log::debug!("Raw response body: {}", body);
 
-        // Deserialize the JSON array
         let filters: Vec<FilterEntry> = serde_json::from_str(&body).map_err(|err| err.to_string())?;
 
-        // Send each filter as a message
-        for filter in filters {
+        for filter in filters.into_iter().filter(|filter| {
+            !filter.syntax_ids.is_empty() && filter.syntax_ids.iter().any(|id| ublock_origin.syntax_ids.contains(id))
+        })
+         {
             link.send_message(SearchFilterMessage::FiltersLoaded(filter));
         }
         Ok(())
+    } else {
+        Err(format!("Failed to fetch: {}", response.status_text()))
+    }
+}
+
+async fn fetch_software() -> Result<FilterSoftwareList, String> {
+    let response = Request::get("https://filterlists.com/api/directory/software")
+        .send()
+        .await
+        .map_err(|err| err.to_string())?;
+    
+    if response.ok() {
+        let body = response.text().await.map_err(|err| err.to_string())?;
+        log::debug!("Raw response body: {}", body);
+
+        // Deserialize the JSON array
+        let syntaxes: FilterSoftwareList = serde_json::from_str(&body).map_err(|err| err.to_string())?;
+        return Ok(syntaxes)
     } else {
         Err(format!("Failed to fetch: {}", response.status_text()))
     }
