@@ -434,6 +434,20 @@ impl Configuration {
         Ok(())
     }
 
+    pub async fn add_filter(&mut self, filter: &mut Filter, http_client: &reqwest::Client) -> ConfigurationResult<()> {
+        match filter.update(http_client).await {
+            Ok(_) =>  {
+                self.filters.push(filter.clone());
+                Ok(())
+            },
+            Err(err) => {
+                log::error!("Failed to add filter: {err}");
+                filter.enabled = false;
+                Err(ConfigurationError::FilterError("Unable to add filter".to_string()))
+            }
+        }
+    }
+
     pub async fn ca_certificate(&self) -> ConfigurationResult<X509> {
         if let Some(ref ca_certificate_path) = self.ca.ca_certificate_path {
             let ca_path = PathBuf::from(ca_certificate_path);

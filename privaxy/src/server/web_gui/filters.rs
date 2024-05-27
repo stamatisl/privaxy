@@ -126,19 +126,23 @@ pub async fn add_filter(
     let filter_url = add_filter_request.url.clone();
 
     // Add the new filter to the configuration
-    let new_filter = Filter {
+    let mut new_filter = Filter {
         enabled: add_filter_request.enabled,
         url: filter_url,
         title: add_filter_request.title.clone(),
         group: add_filter_request.group,
         file_name: calculate_sha256_hex(&add_filter_request.url.to_string()), // Generate a unique file name
     };
-
-    // Append the filter content to the custom_filters vector (or write to a file if needed)
-    configuration.custom_filters.push(filter_content);
-
-    // Add the new filter to the filters vector
-    configuration.filters.push(new_filter);
+    
+    match configuration.add_filter(&mut new_filter, &http_client).await {
+        Ok(_) => {},
+        Err(err) => {
+            log::error!("Failed to add filter: {err}");
+            return Ok(get_error_response(err));
+        }
+        
+    }
+    configuration_updater_sender.send(configuration.clone()).await.unwrap();
 
     // Save the updated configuration
     if let Err(err) = configuration.save().await {
