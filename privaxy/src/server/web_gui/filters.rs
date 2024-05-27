@@ -1,6 +1,5 @@
 use super::get_error_response;
 use crate::configuration::{Configuration, Filter, FilterGroup, calculate_sha256_hex};
-use openssl::conf;
 use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
 
