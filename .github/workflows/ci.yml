@@ -40,6 +40,10 @@ jobs:
       - name: Build web frontend
         run: trunk build
         working-directory: ./web_frontend
+      - name: Build backend
+        run: cargo build
+        working-directory: .
+
 
   rustfmt:
     name: Check style
@@ -105,7 +109,18 @@ jobs:
       - name: Install cross build dependencies
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+      - name: Install node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 14
+      - name: Install node packages
+        working-directory: ./web_frontend
+        run: npm i
 
+      # We need to build the web frontend otherwise, we will not be able to compile
+      # the server and checks will fail.
+      - name: Build web frontend
+        run: trunk build
       - name: Build server
         uses: actions-rs/cargo@v1
         with:
