@@ -1,5 +1,5 @@
-use crate::{save_button, submit_banner, get_api_host};
 use crate::filterlists::SearchFilterList;
+use crate::{get_api_host, save_button, submit_banner};
 use reqwasm::http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::de::IoRead;
@@ -7,12 +7,12 @@ use serde_json::StreamDeserializer;
 use serde_with::{serde_as, DisplayFromStr};
 use std::fmt::Debug;
 use std::io::Cursor;
-use wasm_bindgen_futures::spawn_local;
-use yew::{html, Callback, Component, Context, Html};
-use yew::prelude::*;
-use web_sys::{HtmlInputElement, HtmlSelectElement};
-use yew::InputEvent;
 use url::Url;
+use wasm_bindgen_futures::spawn_local;
+use web_sys::{HtmlInputElement, HtmlSelectElement};
+use yew::prelude::*;
+use yew::InputEvent;
+use yew::{html, Callback, Component, Context, Html};
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 pub enum FilterGroup {
@@ -83,7 +83,6 @@ impl AddFilterRequest {
     }
 }
 
-
 pub struct AddFilterComponent {
     link: yew::html::Scope<Self>,
     is_open: bool,
@@ -102,7 +101,7 @@ impl Component for AddFilterComponent {
             is_open: false,
             category: FilterGroup::Default,
             url: String::new(),
-            title: String::new()
+            title: String::new(),
         }
     }
 
@@ -114,7 +113,11 @@ impl Component for AddFilterComponent {
                 if let Ok(parsed_url) = Url::parse(&url) {
                     let request_body = AddFilterRequest {
                         enabled: true,
-                        title: if title.is_empty() { self.url.clone() } else { title },
+                        title: if title.is_empty() {
+                            self.url.clone()
+                        } else {
+                            title
+                        },
                         group: category,
                         url: parsed_url,
                     };
@@ -192,11 +195,14 @@ impl Component for AddFilterComponent {
             "Add filter"
         };
 
-        let options: Html = FilterGroup::values().into_iter().map(|group| {
-            html! {
-                <option value={group.as_str()}>{group.as_str()}</option>
-            }
-        }).collect();
+        let options: Html = FilterGroup::values()
+            .into_iter()
+            .map(|group| {
+                html! {
+                    <option value={group.as_str()}>{group.as_str()}</option>
+                }
+            })
+            .collect();
 
         let url = self.url.clone();
         let category = self.category.clone();
@@ -272,7 +278,6 @@ impl Component for AddFilterComponent {
         }
     }
 }
-
 
 #[derive(Deserialize, Clone, PartialEq, Eq)]
 pub struct Filter {

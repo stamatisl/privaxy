@@ -129,8 +129,7 @@ pub(crate) fn start_web_gui_server(
                     .and(with_configuration_save_lock(
                         configuration_save_lock.clone(),
                     ))
-                    .and_then(filters::add_filter)),
-                )
+                    .and_then(filters::add_filter)))
             .or(warp::path("custom-filters")
                 .and(
                     warp::get()

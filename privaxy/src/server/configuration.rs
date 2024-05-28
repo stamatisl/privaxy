@@ -3,20 +3,20 @@ use crate::{
 };
 use dirs::home_dir;
 use futures::future::{try_join_all, AbortHandle, Abortable};
+use hex;
 use openssl::{
     pkey::{PKey, Private},
     x509::X509,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
+use sha2::{Digest, Sha256};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::{collections::BTreeSet, time::Duration};
 use thiserror::Error;
 use tokio::sync::{self, mpsc::Sender};
 use tokio::{fs, sync::mpsc::Receiver};
-use sha2::{Digest, Sha256};
-use hex;
 use url::Url;
 
 const CONFIGURATION_DIRECTORY_NAME: &str = ".privaxy";
@@ -59,7 +59,7 @@ pub struct DefaultFilter {
     group: String,
     title: String,
     #[serde_as(as = "DisplayFromStr")]
-    url: Url
+    url: Url,
 }
 
 #[serde_as]
@@ -70,7 +70,7 @@ pub struct Filter {
     pub group: FilterGroup,
     pub file_name: String,
     #[serde_as(as = "DisplayFromStr")]
-    pub url: Url
+    pub url: Url,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -97,7 +97,12 @@ impl DefaultFilters {
         DefaultFilters(filters)
     }
 
-    fn parse_filter(url: &'static str, title: &'static str, group: FilterGroup, enabled_by_default: bool) -> Option<DefaultFilter> {
+    fn parse_filter(
+        url: &'static str,
+        title: &'static str,
+        group: FilterGroup,
+        enabled_by_default: bool,
+    ) -> Option<DefaultFilter> {
         match Url::parse(url) {
             Ok(parsed_url) => {
                 let file_name = calculate_sha256_hex(url);
@@ -108,7 +113,7 @@ impl DefaultFilters {
                     title: title.to_string(),
                     url: parsed_url,
                 })
-            },
+            }
             Err(e) => {
                 log::warn!("Failed to parse URL {}: {}", url, e);
                 None
@@ -130,11 +135,29 @@ impl DefaultFilters {
 
     fn get_ads_filters() -> Vec<DefaultFilter> {
         vec![
-            ("https://filters.adtidy.org/extension/ublock/filters/2_without_easylist.txt", "AdGuard Base", FilterGroup::Ads, false),
-            ("https://filters.adtidy.org/extension/ublock/filters/11.txt", "AdGuard Mobile Ads", FilterGroup::Ads, false),
-            ("https://easylist.to/easylist/easylist.txt", "EasyList", FilterGroup::Ads, true),
-        ].into_iter()
-        .filter_map(|(url, title, group, enabled_by_default)| Self::parse_filter(url, title, group, enabled_by_default))
+            (
+                "https://filters.adtidy.org/extension/ublock/filters/2_without_easylist.txt",
+                "AdGuard Base",
+                FilterGroup::Ads,
+                false,
+            ),
+            (
+                "https://filters.adtidy.org/extension/ublock/filters/11.txt",
+                "AdGuard Mobile Ads",
+                FilterGroup::Ads,
+                false,
+            ),
+            (
+                "https://easylist.to/easylist/easylist.txt",
+                "EasyList",
+                FilterGroup::Ads,
+                true,
+            ),
+        ]
+        .into_iter()
+        .filter_map(|(url, title, group, enabled_by_default)| {
+            Self::parse_filter(url, title, group, enabled_by_default)
+        })
         .collect()
     }
 
@@ -151,10 +174,23 @@ impl DefaultFilters {
 
     fn get_malware_filters() -> Vec<DefaultFilter> {
         vec![
-            ("https://curben.gitlab.io/malware-filter/phishing-filter.txt", "Phishing URL Blocklist", FilterGroup::Malware, false),
-            ("https://curben.gitlab.io/malware-filter/pup-filter.txt", "PUP Domains Blocklist", FilterGroup::Malware, false),
-        ].into_iter()
-        .filter_map(|(url, title, group, enabled_by_default)| Self::parse_filter(url, title, group, enabled_by_default))
+            (
+                "https://curben.gitlab.io/malware-filter/phishing-filter.txt",
+                "Phishing URL Blocklist",
+                FilterGroup::Malware,
+                false,
+            ),
+            (
+                "https://curben.gitlab.io/malware-filter/pup-filter.txt",
+                "PUP Domains Blocklist",
+                FilterGroup::Malware,
+                false,
+            ),
+        ]
+        .into_iter()
+        .filter_map(|(url, title, group, enabled_by_default)| {
+            Self::parse_filter(url, title, group, enabled_by_default)
+        })
         .collect()
     }
 
@@ -213,13 +249,11 @@ impl DefaultFilters {
     }
 }
 
-
-pub (crate) fn calculate_sha256_hex(input: &str) -> String {
+pub(crate) fn calculate_sha256_hex(input: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(input);
     hex::encode(hasher.finalize())
 }
-
 
 impl Filter {
     async fn update(&mut self, http_client: &reqwest::Client) -> ConfigurationResult<String> {
@@ -236,7 +270,10 @@ impl Filter {
         Ok(filter)
     }
 
-    pub async fn get_contents(&mut self, http_client: &reqwest::Client) -> ConfigurationResult<String> {
+    pub async fn get_contents(
+        &mut self,
+        http_client: &reqwest::Client,
+    ) -> ConfigurationResult<String> {
         let filter_path = get_filter_directory().join(&self.file_name);
         match fs::read(filter_path).await {
             Err(err) => {
@@ -266,7 +303,7 @@ impl From<DefaultFilter> for Filter {
                 _ => unreachable!(),
             },
             file_name: default_filter.file_name,
-            url: default_filter.url
+            url: default_filter.url,
         }
     }
 }
@@ -418,7 +455,10 @@ impl Configuration {
         self.filters.iter_mut().filter(|f| f.enabled)
     }
 
-    pub async fn update_filters(&mut self, http_client: reqwest::Client) -> ConfigurationResult<()> {
+    pub async fn update_filters(
+        &mut self,
+        http_client: reqwest::Client,
+    ) -> ConfigurationResult<()> {
         log::debug!("Updating filters");
 
         let futures = self.filters.iter_mut().filter_map(|filter| {
@@ -434,16 +474,22 @@ impl Configuration {
         Ok(())
     }
 
-    pub async fn add_filter(&mut self, filter: &mut Filter, http_client: &reqwest::Client) -> ConfigurationResult<()> {
+    pub async fn add_filter(
+        &mut self,
+        filter: &mut Filter,
+        http_client: &reqwest::Client,
+    ) -> ConfigurationResult<()> {
         match filter.update(http_client).await {
-            Ok(_) =>  {
+            Ok(_) => {
                 self.filters.push(filter.clone());
                 Ok(())
-            },
+            }
             Err(err) => {
                 log::error!("Failed to add filter: {err}");
                 filter.enabled = false;
-                Err(ConfigurationError::FilterError("Unable to add filter".to_string()))
+                Err(ConfigurationError::FilterError(
+                    "Unable to add filter".to_string(),
+                ))
             }
         }
     }
@@ -489,7 +535,6 @@ impl Configuration {
     }
 
     async fn new_default(http_client: reqwest::Client) -> ConfigurationResult<Self> {
-
         let (x509, private_key) = make_ca_certificate();
 
         let x509_pem = std::str::from_utf8(&x509.to_pem().unwrap())
@@ -502,7 +547,8 @@ impl Configuration {
 
         let default_filters = DefaultFilters::new();
         Ok(Configuration {
-            filters: default_filters.0
+            filters: default_filters
+                .0
                 .into_iter()
                 .map(|filter| filter.into())
                 .collect(),
@@ -576,19 +622,26 @@ async fn get_filter(
                     Ok(content) => content,
                     Err(err) => {
                         log::error!("Failed to read filter content: {err}");
-                        return Err(ConfigurationError::FilterError(format!("Failed to read filter content: {}", err)))
+                        return Err(ConfigurationError::FilterError(format!(
+                            "Failed to read filter content: {}",
+                            err
+                        )));
                     }
                 }
             } else {
                 log::error!("Failed to fetch filter content: {}", response.status());
-                return Err(ConfigurationError::FilterError(format!("Failed to fetch filter content: {}", response.status())));
+                return Err(ConfigurationError::FilterError(format!(
+                    "Failed to fetch filter content: {}",
+                    response.status()
+                )));
             }
-        },
+        }
         Err(err) => {
             log::error!("Failed to fetch filter URL: {err}");
             return Err(ConfigurationError::FilterError(format!(
                 "Failed to fetch filter URL: {}",
-                err)));
+                err
+            )));
         }
     };
     Ok(response)
