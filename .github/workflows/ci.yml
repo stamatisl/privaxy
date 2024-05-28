@@ -41,11 +41,6 @@ jobs:
         run: trunk build
         working-directory: ./web_frontend
 
-      - uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features
-
   rustfmt:
     name: Check style
     runs-on: ubuntu-latest
@@ -81,14 +76,6 @@ jobs:
             os: ubuntu-latest
             rust: stable
             target: aarch64-unknown-linux-gnu
-          # - build: macos
-          #   os: macos-latest
-          #   rust: stable
-          #   target: x86_64-apple-darwin
-          # - buid: macos
-          #   os: macos-latest
-          #   rust: stable
-          #   target: aarch64-apple-darwin
           - build: windows
             os: windows-latest
             rust: stable
@@ -131,14 +118,6 @@ jobs:
           name: privaxy_nogui-${{ matrix.target }}
           path: |
             target/${{ matrix.target }}/release/privaxy
-
-      - uses: actions/upload-artifact@v3
-        if: matrix.os == 'windows-latest'
-        with:
-          name: privaxy_nogui-${{ matrix.target }}
-          path: |
-            target/${{ matrix.target }}/release/privaxy.exe
-
   ci_desktop:
     name: CI Desktop
     runs-on: ${{ matrix.os }}
@@ -148,9 +127,6 @@ jobs:
           - build: linux
             os: ubuntu-latest
             rust: stable
-          # - build: macos
-          #   os: macos-latest
-          #   rust: stable
           - build: windows
             os: windows-latest
             rust: stable
@@ -191,20 +167,6 @@ jobs:
       - if: startsWith(matrix.os, 'ubuntu') == true
         name: Install gui library packages
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.0-dev build-essential libayatana-appindicator3-dev librsvg2-dev libgtk-3-dev libsoup2.4-dev libjavascriptcoregtk-4.0-dev
-
-      - if: startsWith(matrix.os, 'macos') == true
-        name: Install rust apple arm target
-        run: rustup target add aarch64-apple-darwin
-
-      - if: startsWith(matrix.os, 'macos') == true
-        name: Install apple api key private key
-        run: |
-          mkdir -p ~/private_keys
-          echo "$API_KEY" >> ~/private_keys/AuthKey_"$API_KEY_ID".p8
-        shell: bash
-        env:
-          API_KEY: ${{secrets.APPLE_API_KEY_CONTENTS}}
-          API_KEY_ID: ${{secrets.APPLE_API_KEY}}
         
       - name: Install node packages
         working-directory: ./web_frontend
@@ -214,22 +176,3 @@ jobs:
       - name: Build web frontend
         run: trunk build --release
         working-directory: ./web_frontend
-
-      - name: Build desktop app
-        id: desktop_app
-        uses: tauri-apps/tauri-action@5a6072a9edbbf71718caee364b5b96731d7580fc #v0 does not handle universal builds
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ENABLE_CODE_SIGNING: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-        with:
-          tagName: privaxy-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version
-          releaseName: 'Privaxy v__VERSION__'
-          releaseBody: 'See the assets to download this version and install.'
-          releaseDraft: true
-          prerelease: false
-          args: ${{ startsWith(matrix.os, 'macos') == true && '--target universal-apple-darwin' || '' }}
