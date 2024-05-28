@@ -1,26 +1,28 @@
 use crate::blocker::AdblockRequester;
-use crate::events::Event;
 use crate::proxy::exclusions::LocalExclusionStore;
+use crate::web_gui::events::Event;
 use hyper::server::conn::AddrStream;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Client, Server};
+use include_dir::{include_dir, Dir};
 use proxy::exclusions;
 use reqwest::redirect::Policy;
 use std::convert::Infallible;
+use std::env;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use tokio::sync::broadcast;
-
 pub mod blocker;
 mod blocker_utils;
 mod ca;
 mod cert;
 pub mod configuration;
-pub mod events;
 mod proxy;
 pub mod statistics;
+mod web_gui;
+pub const WEBAPP_FRONTEND_DIR: Dir<'_> = include_dir!("web_frontend/dist");
 
 #[derive(Debug, Clone)]
 pub struct PrivaxyServer {
@@ -34,9 +36,19 @@ pub struct PrivaxyServer {
     pub requests_broadcast_sender: broadcast::Sender<Event>,
 }
 
-pub async fn start_privaxy() -> PrivaxyServer {
-    let ip = [127, 0, 0, 1];
+// Helper function to parse the IP address string into an array of u8
+fn parse_ip_address(ip_str: &str) -> [u8; 4] {
+    let mut ip: [u8; 4] = [0, 0, 0, 0];
+    let parts: Vec<&str> = ip_str.split('.').collect();
+    for (i, part) in parts.iter().enumerate() {
+        if let Ok(num) = part.parse::<u8>() {
+            ip[i] = num;
+        }
+    }
+    ip
+}
 
+pub async fn start_privaxy() -> PrivaxyServer {
     // We use reqwest instead of hyper's client to perform most of the proxying as it's more convenient
     // to handle compression as well as offers a more convenient interface.
     let client = reqwest::Client::builder()
@@ -64,7 +76,7 @@ pub async fn start_privaxy() -> PrivaxyServer {
         LocalExclusionStore::new(Vec::from_iter(configuration.exclusions.clone().into_iter()));
     let local_exclusion_store_clone = local_exclusion_store.clone();
 
-    let ca_certificate = match configuration.ca_certificate() {
+    let ca_certificate = match configuration.ca_certificate().await {
         Ok(ca_certificate) => ca_certificate,
         Err(err) => {
             println!("Unable to decode ca certificate: {:?}", err);
@@ -76,7 +88,7 @@ pub async fn start_privaxy() -> PrivaxyServer {
         .unwrap()
         .to_string();
 
-    let ca_private_key = match configuration.ca_private_key() {
+    let ca_private_key = match configuration.ca_private_key().await {
         Ok(ca_private_key) => ca_private_key,
         Err(err) => {
             println!("Unable to decode ca private key: {:?}", err);
@@ -109,10 +121,37 @@ pub async fn start_privaxy() -> PrivaxyServer {
     )
     .await;
 
+    let network_config = configuration.network.clone();
     let configuration_updater_tx = configuration_updater.tx.clone();
     configuration_updater_tx.send(configuration).await.unwrap();
 
     configuration_updater.start();
+
+    let configuration_save_lock = Arc::new(tokio::sync::Mutex::new(()));
+    let ip = match env::var("PRIVAXY_IP_ADDRESS") {
+        Ok(val) =>
+        // Parse the IP address from the environment variable string
+        {
+            parse_ip_address(&val)
+        }
+        Err(_) =>
+        // Set a default IP address
+        {
+            parse_ip_address(&network_config.bind_addr.clone())
+        }
+    };
+    let web_api_server_addr = SocketAddr::from((ip, network_config.api_port));
+
+    web_gui::start_web_gui_server(
+        broadcast_tx.clone(),
+        statistics.clone(),
+        blocking_disabled_store.clone(),
+        configuration_updater_tx.clone(),
+        ca_certificate_pem.clone(),
+        configuration_save_lock.clone(),
+        local_exclusion_store.clone(),
+        web_api_server_addr,
+    );
 
     thread::spawn(move || {
         let blocker = blocker::Blocker::new(
@@ -164,7 +203,7 @@ pub async fn start_privaxy() -> PrivaxyServer {
         }
     });
 
-    let proxy_server_addr = SocketAddr::from((ip, 8100));
+    let proxy_server_addr = SocketAddr::from((ip, network_config.proxy_port));
 
     let server = Server::bind(&proxy_server_addr)
         .http1_preserve_header_case(true)
@@ -172,14 +211,22 @@ pub async fn start_privaxy() -> PrivaxyServer {
         .tcp_keepalive(Some(Duration::from_secs(600)))
         .serve(make_service);
 
-    tokio::spawn(server);
+    let web_gui_http_addr = SocketAddr::from((ip, network_config.web_port));
+
+    web_gui::start_web_gui_static_files_server(web_gui_http_addr, web_api_server_addr);
 
     log::info!("Proxy available at http://{}", proxy_server_addr);
+    log::info!("API server available at http://{}", web_api_server_addr);
+    log::info!("Web gui available at http://{}", web_gui_http_addr);
+
+    if let Err(e) = server.await {
+        log::error!("server error: {}", e);
+    }
 
     PrivaxyServer {
         ca_certificate_pem,
         configuration_updater_sender: configuration_updater_tx,
-        configuration_save_lock: Arc::new(tokio::sync::Mutex::new(())),
+        configuration_save_lock: configuration_save_lock,
         blocking_disabled_store: blocking_disabled_store_clone,
         statistics: statistics_clone,
         local_exclusion_store: local_exclusion_store_clone,

@@ -1,10 +1,12 @@
 use crate::blocking_enabled::BlockingEnabled;
-use crate::save_ca_certificate::SaveCaCertificate;
+use crate::get_api_host;
 use futures::future::{AbortHandle, Abortable};
+use futures::StreamExt;
 use gloo_timers::future::TimeoutFuture;
 use num_format::{Locale, ToFormattedString};
+use reqwasm::websocket::futures::WebSocket;
 use serde::Deserialize;
-use tauri_sys::tauri;
+use std::io::Cursor;
 use wasm_bindgen_futures::spawn_local;
 use yew::{html, Component, Context, Html};
 
@@ -21,7 +23,7 @@ pub struct Message {
 
 pub struct Dashboard {
     message: Message,
-    abort_handle: AbortHandle,
+    ws_abort_handle: AbortHandle,
 }
 
 impl Component for Dashboard {
@@ -35,15 +37,57 @@ impl Component for Dashboard {
         let future = Abortable::new(
             async move {
                 loop {
-                    let mut message: Message = tauri::invoke("get_statistics", &()).await.unwrap();
+                    let ws = match WebSocket::open(&format!("ws://{}/statistics", get_api_host())) {
+                        Ok(ws) => ws,
+                        Err(_err) => {
+                            log::warn!("Unable to connect to websocket, trying again.");
 
-                    // Invoke seems to reshuffle the data?
-                    message.top_clients.sort_by(|a, b| b.1.cmp(&a.1));
-                    message.top_blocked_paths.sort_by(|a, b| b.1.cmp(&a.1));
+                            TimeoutFuture::new(1_000).await;
 
-                    message_callback.emit(message);
+                            continue;
+                        }
+                    };
 
-                    TimeoutFuture::new(200).await;
+                    let (_write, mut read) = ws.split();
+
+                    while let Some(result) = read.next().await {
+                        match result {
+                            Ok(msg) => {
+                                let message = match msg {
+                                    reqwasm::websocket::Message::Text(s) => {
+                                        let cursor = Cursor::new(s.as_bytes());
+                                        let mut deserializer =
+                                            serde_json::Deserializer::from_reader(cursor)
+                                                .into_iter::<Message>();
+
+                                        match deserializer.next() {
+                                            Some(Ok(message)) => message,
+                                            Some(Err(e)) => {
+                                                log::error!(
+                                                    "Failed to deserialize message: {:?}",
+                                                    e
+                                                );
+                                                continue;
+                                            }
+                                            None => {
+                                                log::warn!("No message received");
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                    reqwasm::websocket::Message::Bytes(_) => unreachable!(),
+                                };
+                                message_callback.emit(message);
+                            }
+                            Err(e) => {
+                                log::warn!("WebSocket error: {:?}", e);
+                                break;
+                            }
+                        }
+                    }
+                    log::warn!("Lost connection to websocket, trying again.");
+
+                    TimeoutFuture::new(1_000).await;
                 }
             },
             abort_registration,
@@ -54,7 +98,7 @@ impl Component for Dashboard {
         });
 
         Self {
-            abort_handle,
+            ws_abort_handle: abort_handle,
             message: Message {
                 proxied_requests: None,
                 blocked_requests: None,
@@ -104,7 +148,15 @@ impl Component for Dashboard {
                     </div>
                     <div
                         class="mt-6 flex flex-col-reverse justify-stretch space-y-4 space-y-reverse sm:flex-row-reverse sm:justify-end sm:space-x-reverse sm:space-y-0 sm:space-x-3 md:mt-0 md:flex-row md:space-x-3">
-                    <SaveCaCertificate />
+                        <a href={format!("//{}/privaxy_ca_certificate.pem", get_api_host())}
+                        class="inline-flex items-center justify-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-white bg-gray-800 hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-100 focus:ring-gray-500">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="ml-0.5 mr-2 h-5 w-5" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        {"Download CA certificate"}
+                    </a>
                         <BlockingEnabled />
                     </div>
                 </div>
@@ -174,6 +226,6 @@ impl Component for Dashboard {
     }
 
     fn destroy(&mut self, _ctx: &Context<Self>) {
-        self.abort_handle.abort()
+        self.ws_abort_handle.abort()
     }
 }

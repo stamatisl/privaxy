@@ -2,9 +2,10 @@ use crate::blocker_utils::{
     build_resource_from_file_contents, read_redirectable_resource_mapping, read_template_resources,
 };
 use adblock::blocker::BlockerResult as AdblockerBlockerResult;
-use adblock::engine::Engine;
 use adblock::lists::FilterSet;
+use adblock::request::Request;
 use adblock::resources::Resource;
+use adblock::Engine;
 use crossbeam_channel::{Receiver, Sender};
 use include_dir::{include_dir, Dir};
 use lazy_static::lazy_static;
@@ -172,19 +173,19 @@ impl Blocker {
                                 redirect: None,
                                 exception: None,
                                 filter: None,
-                                error: None,
                                 rewritten_url: None,
                             },
                         ));
 
                         continue;
                     }
-
-                    let blocker_result = self.engine.check_network_urls(
+                    let req = Request::new(
                         network_url.url.as_str(),
                         network_url.referer.as_str(),
                         "other",
-                    );
+                    )
+                    .unwrap();
+                    let blocker_result = self.engine.check_network_request(&req);
 
                     let _result = request
                         .respond_to
@@ -201,7 +202,7 @@ impl Blocker {
                     }
 
                     let mut adblock_engine = Engine::from_filter_set(filter_set, true);
-                    adblock_engine.use_resources(&ADBLOCKING_RESOURCES);
+                    adblock_engine.use_resources(ADBLOCKING_RESOURCES.clone());
 
                     self.engine = adblock_engine;
                 }

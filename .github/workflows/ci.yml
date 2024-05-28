@@ -81,14 +81,14 @@ jobs:
             os: ubuntu-latest
             rust: stable
             target: aarch64-unknown-linux-gnu
-          - build: macos
-            os: macos-latest
-            rust: stable
-            target: x86_64-apple-darwin
-          - buid: macos
-            os: macos-latest
-            rust: stable
-            target: aarch64-apple-darwin
+          # - build: macos
+          #   os: macos-latest
+          #   rust: stable
+          #   target: x86_64-apple-darwin
+          # - buid: macos
+          #   os: macos-latest
+          #   rust: stable
+          #   target: aarch64-apple-darwin
           - build: windows
             os: windows-latest
             rust: stable
@@ -148,9 +148,9 @@ jobs:
           - build: linux
             os: ubuntu-latest
             rust: stable
-          - build: macos
-            os: macos-latest
-            rust: stable
+          # - build: macos
+          #   os: macos-latest
+          #   rust: stable
           - build: windows
             os: windows-latest
             rust: stable

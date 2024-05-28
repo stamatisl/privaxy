@@ -1,7 +1,7 @@
 //! Implementation of following utils are derived from https://raw.githubusercontent.com/brave/adblock-rust/master/src/resources/resource_assembler.rs
 //! Contains methods useful for building `Resource` descriptors from resources directly from files
 //! in the uBlock Origin repository.
-use adblock::resources::{MimeType, Resource, ResourceType};
+use adblock::resources::{MimeType, PermissionMask, Resource, ResourceType};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -186,6 +186,8 @@ pub fn read_template_resources(scriptlets_data: &str) -> Vec<Resource> {
                 .unwrap_or_default(),
             kind,
             content: base64::encode(&script),
+            dependencies: Vec::new(),
+            permission: PermissionMask::default(),
         });
 
         name = None;
@@ -222,5 +224,7 @@ pub fn build_resource_from_file_contents(
         aliases,
         kind: ResourceType::Mime(mimetype),
         content,
+        dependencies: Vec::new(),
+        permission: PermissionMask::default(),
     }
 }

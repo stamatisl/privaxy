@@ -17,6 +17,7 @@ use rustls::{Certificate, PrivateKey, ServerConfig};
 use std::{str::FromStr, sync::Arc};
 use tokio::sync::Mutex;
 use uluru::LRUCache;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const MAX_CACHED_CERTIFICATES: usize = 1_000;
 
@@ -108,7 +109,12 @@ impl SignedWithCaCert {
             .unwrap();
         cert_builder.set_pubkey(private_key).unwrap();
 
-        let not_before = Asn1Time::days_from_now(0).unwrap();
+        let not_before = {
+            let current_time = SystemTime::now();
+            let since_epoch = current_time.duration_since(UNIX_EPOCH).expect("Time went backwards");
+            // patch NotValidBefore
+            Asn1Time::from_unix(since_epoch.as_secs() as i64 - 60).unwrap()
+        };
         cert_builder.set_not_before(&not_before).unwrap();
 
         let not_after = Asn1Time::days_from_now(365).unwrap();
@@ -131,8 +137,6 @@ impl SignedWithCaCert {
             .unwrap();
 
         let subject_alternative_name = match std::net::IpAddr::from_str(authority.host()) {
-            // If we are able to parse the authority as an ip address, let's build an "IP" field instead
-            // of a "DNS" one.
             Ok(_ip_addr) => {
                 let mut san = SubjectAlternativeName::new();
                 san.ip(authority.host());
