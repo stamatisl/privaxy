@@ -1,7 +1,8 @@
 
+use crate::{save_button, submit_banner, get_api_host};
 use crate::save_button::BASE_BUTTON_CSS;
 use reqwasm::http::Request;
-
+use crate::filters::{AddFilterRequest,FilterGroup};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use wasm_bindgen_futures::spawn_local;
@@ -10,6 +11,7 @@ use yew::prelude::*;
 use web_sys::HtmlInputElement;
 use yew::InputEvent;
 use yew::html::Scope;
+use url::Url;
 
 
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
@@ -220,8 +222,31 @@ impl Component for SearchFilterList {
             },
             SearchFilterMessage::Save => {
                 if let Some(filter) = &self.selected_filter {
-                    // todo: add logic to save the selected filter to the database using the API
-                    // similar to the `AddFilterComponent` save logic
+                    let parsed_url = match Url::parse(&filter.primary_view_url.clone().unwrap()) {
+                        Ok(url) => url,
+                        Err(err) => {
+                            log::error!("Failed to parse URL: {}", err);
+                            return false;
+                        }
+                    };
+                    let request_body: AddFilterRequest = AddFilterRequest::new(self.selected_filter.clone().unwrap().name, FilterGroup::Malware, parsed_url);
+                    let request = Request::post(&format!("http://{}/filters", get_api_host()))
+                        .header("Content-Type", "application/json")
+                        .body(serde_json::to_string(&request_body).unwrap());
+                    spawn_local(async move {
+                        match request.send().await {
+                            Ok(response) => {
+                                if response.ok() {
+                                    log::info!("Filter added successfully");
+                                } else {
+                                    log::error!("Failed to add filter: {:?}", response.status());
+                                }
+                            }
+                            Err(err) => {
+                                log::error!("Request error: {:?}", err);
+                            }
+                        }
+                    })
                 }
                 self.is_open = false;
             },
@@ -255,7 +280,7 @@ impl Component for SearchFilterList {
     
         
         let filtered_filters: Vec<&FilterEntry> = self.filters.iter()
-        .filter(|filter| filter.name.contains(&self.filter_query))
+        .filter(|filter| filter.name.to_lowercase().contains(&self.filter_query.to_lowercase()))
         .collect();
         let total_pages = (filtered_filters.len() as f64 / self.results_per_page as f64).ceil() as usize;
         let start_index = (self.current_page - 1) * self.results_per_page;

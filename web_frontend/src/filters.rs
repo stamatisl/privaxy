@@ -15,7 +15,7 @@ use yew::InputEvent;
 use url::Url;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
-enum FilterGroup {
+pub enum FilterGroup {
     Default,
     Regional,
     Ads,
@@ -64,12 +64,23 @@ pub enum AddFilterMessage {
 
 #[serde_as]
 #[derive(Serialize)]
-struct AddFilterRequest {
+pub struct AddFilterRequest {
     enabled: bool,
     title: String,
     group: FilterGroup,
     #[serde_as(as = "DisplayFromStr")]
     url: Url,
+}
+
+impl AddFilterRequest {
+    pub fn new(title: String, group: FilterGroup, url: Url) -> Self {
+        Self {
+            enabled: true,
+            title,
+            group,
+            url,
+        }
+    }
 }
 
 
