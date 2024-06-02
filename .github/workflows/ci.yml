@@ -118,7 +118,7 @@ jobs:
           command: install
           args: --locked --debug trunk
       - name: Build web frontend
-        run: trunk build --release
+        run: rustup target add wasm32-unknown-unknown && trunk build --release
         working-directory: ./web_frontend
       - name: Build server
         uses: actions-rs/cargo@v1
