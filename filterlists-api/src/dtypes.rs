@@ -1,7 +1,6 @@
-use serde::{Deserialize, Serialize};
 use readonly;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
-
 
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -23,7 +22,6 @@ pub struct Filter {
 fn default_description() -> String {
     "No description".to_string()
 }
-
 
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -88,7 +86,6 @@ pub struct FilterSoftware {
     pub syntax_ids: Vec<u64>,
 }
 
-
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 #[readonly::make]
@@ -99,7 +96,6 @@ pub struct FilterListSyntax {
     pub filter_list_ids: Vec<u64>,
     pub software_ids: Vec<u64>,
 }
-
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -117,7 +113,6 @@ pub struct FilterLicense {
     pub permit_commercial_use: Option<bool>,
     pub filter_list_ids: Vec<u64>,
 }
-
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -139,7 +134,6 @@ pub struct FilterListAPIError {
     pub trace_id: String,
 }
 
-
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 #[readonly::make]
@@ -151,11 +145,9 @@ pub struct FilterMaintainer {
 }
 
 pub enum FilterArgs {
-  U64(u64),
-  Filter(Filter),
+    U64(u64),
+    Filter(Filter),
 }
-
-
 
 #[derive(Debug, Error)]
 pub enum FilterListError {

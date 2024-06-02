@@ -1,9 +1,7 @@
-
 #[cfg(all(feature = "reqwasm", feature = "reqwest"))]
 compile_error!("feature \"reqwasm\" and \"reqwest\" cannot be enabled at the same time");
 
-
-use crate::{FilterListError,FilterListAPIError};
+use crate::{FilterListAPIError, FilterListError};
 macro_rules! if_wasm {
     ($($item:item)*) => {
         $(
@@ -42,8 +40,6 @@ if_wasm! {
         }
     }
 }
-
-
 
 if_reqwest! {
     use reqwest;

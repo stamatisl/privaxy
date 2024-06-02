@@ -43,7 +43,6 @@ use filterlists_api;
 
 const FILTER_TAG_GROUPS: [&'static str; 4] = ["ads", "privacy", "malware", "social"];
 
-
 #[derive(Properties, PartialEq)]
 pub struct Props {
     pub filter_configuration: FilterConfiguration,
@@ -161,20 +160,34 @@ impl Component for SearchFilterList {
                     let link = self.link.clone();
                     spawn_local(async move {
                         match filterlists_api::get_languages().await {
-                            Ok(langs) => link.send_message(SearchFilterMessage::LanguagesLoaded(langs)),
-                            Err(err) => link.send_message(SearchFilterMessage::Error(err.to_string())),
+                            Ok(langs) => {
+                                link.send_message(SearchFilterMessage::LanguagesLoaded(langs))
+                            }
+                            Err(err) => {
+                                link.send_message(SearchFilterMessage::Error(err.to_string()))
+                            }
                         };
                         match filterlists_api::get_licenses().await {
-                            Ok(licenses) => link.send_message(SearchFilterMessage::LicensesLoaded(licenses)),
-                            Err(err) => link.send_message(SearchFilterMessage::Error(err.to_string())),
+                            Ok(licenses) => {
+                                link.send_message(SearchFilterMessage::LicensesLoaded(licenses))
+                            }
+                            Err(err) => {
+                                link.send_message(SearchFilterMessage::Error(err.to_string()))
+                            }
                         };
                         match filterlists_api::get_tags().await {
                             Ok(tags) => link.send_message(SearchFilterMessage::TagsLoaded(tags)),
-                            Err(err) => link.send_message(SearchFilterMessage::Error(err.to_string())),
+                            Err(err) => {
+                                link.send_message(SearchFilterMessage::Error(err.to_string()))
+                            }
                         };
                         match filterlists_api::get_filters().await {
-                            Ok(filters) => link.send_message(SearchFilterMessage::FiltersLoaded(filters)),
-                            Err(err) => link.send_message(SearchFilterMessage::Error(err.to_string())),
+                            Ok(filters) => {
+                                link.send_message(SearchFilterMessage::FiltersLoaded(filters))
+                            }
+                            Err(err) => {
+                                link.send_message(SearchFilterMessage::Error(err.to_string()))
+                            }
                         };
                     });
                 }
