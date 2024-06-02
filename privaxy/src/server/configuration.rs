@@ -344,7 +344,7 @@ pub enum ConfigurationError {
 }
 
 impl Configuration {
-    pub async fn read_from_home(http_client: reqwest::Client) -> ConfigurationResult<Self> {
+    pub async fn read_from_home() -> ConfigurationResult<Self> {
         let configuration_directory = get_config_directory();
         let configuration_file_path = configuration_directory.join(CONFIGURATION_FILE_NAME);
 
@@ -354,7 +354,7 @@ impl Configuration {
 
                 fs::create_dir(&configuration_directory).await?;
 
-                let configuration = Self::new_default(http_client).await?;
+                let configuration = Self::new_default().await?;
                 configuration.save().await?;
 
                 return Ok(configuration);
@@ -369,7 +369,7 @@ impl Configuration {
                 log::debug!("Configuration file not found, creating one");
 
                 if err.kind() == std::io::ErrorKind::NotFound {
-                    let configuration = Self::new_default(http_client).await?;
+                    let configuration = Self::new_default().await?;
                     configuration.save().await?;
 
                     Ok(configuration)
@@ -534,7 +534,7 @@ impl Configuration {
         }
     }
 
-    async fn new_default(http_client: reqwest::Client) -> ConfigurationResult<Self> {
+    async fn new_default() -> ConfigurationResult<Self> {
         let (x509, private_key) = make_ca_certificate();
 
         let x509_pem = std::str::from_utf8(&x509.to_pem().unwrap())

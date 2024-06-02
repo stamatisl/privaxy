@@ -5,9 +5,8 @@ use tokio::sync::mpsc::Sender;
 use warp::http::StatusCode;
 
 pub async fn get_custom_filters(
-    http_client: reqwest::Client,
 ) -> Result<Box<dyn warp::Reply>, Infallible> {
-    let configuration = match Configuration::read_from_home(http_client).await {
+    let configuration = match Configuration::read_from_home().await {
         Ok(configuration) => configuration,
         Err(err) => {
             log::error!("Failed to get customs filters: {err}");
@@ -22,13 +21,12 @@ pub async fn get_custom_filters(
 
 pub async fn put_custom_filters(
     custom_filters: String,
-    http_client: reqwest::Client,
     configuration_updater_sender: Sender<Configuration>,
     configuration_save_lock: Arc<tokio::sync::Mutex<()>>,
 ) -> Result<Box<dyn warp::Reply>, Infallible> {
     let _guard = configuration_save_lock.lock().await;
 
-    let mut configuration = match Configuration::read_from_home(http_client).await {
+    let mut configuration = match Configuration::read_from_home().await {
         Ok(configuration) => configuration,
         Err(err) => {
             log::error!("Failed to put customs filters: {err}");

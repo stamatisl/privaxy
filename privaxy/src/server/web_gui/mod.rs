@@ -75,7 +75,7 @@ pub(crate) fn start_web_gui_server(
 
     let cors = warp::cors()
         .allow_any_origin()
-        .allow_methods(vec!["GET", "PUT", "POST"])
+        .allow_methods(vec!["GET", "PUT", "POST", "DELETE"])
         .allow_headers(vec![
             http::header::CONTENT_TYPE,
             http::header::CONTENT_LENGTH,
@@ -105,13 +105,11 @@ pub(crate) fn start_web_gui_server(
             .or(warp::path("filters")
                 .and(
                     warp::get()
-                        .and(with_http_client(http_client.clone()))
                         .and_then(filters::get_filters_configuration),
                 )
                 .or(warp::put()
                     .and(warp::path("filters"))
                     .and(warp::body::json())
-                    .and(with_http_client(http_client.clone()))
                     .and(with_configuration_updater_sender(
                         configuration_updater_sender.clone(),
                     ))
@@ -129,17 +127,25 @@ pub(crate) fn start_web_gui_server(
                     .and(with_configuration_save_lock(
                         configuration_save_lock.clone(),
                     ))
-                    .and_then(filters::add_filter)))
+                    .and_then(filters::add_filter))
+                .or(warp::delete()
+                    .and(warp::path("filters"))
+                    .and(warp::body::json())
+                    .and(with_configuration_updater_sender(
+                        configuration_updater_sender.clone(),
+                    )).and(with_configuration_save_lock(
+                        configuration_save_lock.clone(),
+                    ))
+                    .and_then(filters::delete_filter))
+                )
             .or(warp::path("custom-filters")
                 .and(
                     warp::get()
-                        .and(with_http_client(http_client.clone()))
                         .and_then(custom_filters::get_custom_filters),
                 )
                 .or(warp::put().and(
                     warp::path("custom-filters")
                         .and(warp::body::json())
-                        .and(with_http_client(http_client.clone()))
                         .and(with_configuration_updater_sender(
                             configuration_updater_sender.clone(),
                         ))
@@ -151,13 +157,11 @@ pub(crate) fn start_web_gui_server(
             .or(warp::path("exclusions")
                 .and(
                     warp::get()
-                        .and(with_http_client(http_client.clone()))
                         .and_then(exclusions::get_exclusions),
                 )
                 .or(warp::put().and(
                     warp::path("exclusions")
                         .and(warp::body::json())
-                        .and(with_http_client(http_client.clone()))
                         .and(with_configuration_updater_sender(
                             configuration_updater_sender.clone(),
                         ))

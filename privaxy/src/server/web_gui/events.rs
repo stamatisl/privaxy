@@ -5,7 +5,7 @@ use tokio::sync::broadcast;
 use warp::ws::{Message, WebSocket};
 
 #[derive(Debug, Serialize, Clone)]
-pub(crate) struct Event {
+pub struct Event {
     pub now: DateTime<Utc>,
     pub method: String,
     pub url: String,
