@@ -5,6 +5,7 @@ edition = "2021"
 
 
 [dependencies]
+filterlists-api = { path = "../filterlists-api", features = ["reqwasm"] }
 yew = "0.19.3"
 yew-router = "0.16.0"
 serde_json = "1.0.81"
