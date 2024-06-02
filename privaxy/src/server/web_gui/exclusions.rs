@@ -4,8 +4,7 @@ use std::{convert::Infallible, sync::Arc};
 use tokio::sync::mpsc::Sender;
 use warp::http::StatusCode;
 
-pub async fn get_exclusions(
-) -> Result<Box<dyn warp::Reply>, Infallible> {
+pub async fn get_exclusions() -> Result<Box<dyn warp::Reply>, Infallible> {
     let configuration = match Configuration::read_from_home().await {
         Ok(configuration) => configuration,
         Err(err) => {

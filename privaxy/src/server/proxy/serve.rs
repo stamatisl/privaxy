@@ -104,8 +104,8 @@ pub(crate) async fn serve(
         Ok(response) => response,
         Err(err) => {
             log::error!("Failed to send request: {}", err.to_string());
-            return Ok(get_informative_error_response(&err.to_string()))
-        },
+            return Ok(get_informative_error_response(&err.to_string()));
+        }
     };
 
     statistics.increment_proxied_requests();

@@ -60,8 +60,7 @@ pub async fn change_filter_status(
         .unwrap())
 }
 
-pub async fn get_filters_configuration(
-) -> Result<impl warp::Reply, Infallible> {
+pub async fn get_filters_configuration() -> Result<impl warp::Reply, Infallible> {
     let configuration = match Configuration::read_from_home().await {
         Ok(configuration) => configuration,
         Err(err) => {

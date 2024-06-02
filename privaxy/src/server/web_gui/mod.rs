@@ -103,10 +103,7 @@ pub(crate) fn start_web_gui_server(
                         })),
             )
             .or(warp::path("filters")
-                .and(
-                    warp::get()
-                        .and_then(filters::get_filters_configuration),
-                )
+                .and(warp::get().and_then(filters::get_filters_configuration))
                 .or(warp::put()
                     .and(warp::path("filters"))
                     .and(warp::body::json())
@@ -133,16 +130,13 @@ pub(crate) fn start_web_gui_server(
                     .and(warp::body::json())
                     .and(with_configuration_updater_sender(
                         configuration_updater_sender.clone(),
-                    )).and(with_configuration_save_lock(
+                    ))
+                    .and(with_configuration_save_lock(
                         configuration_save_lock.clone(),
                     ))
-                    .and_then(filters::delete_filter))
-                )
+                    .and_then(filters::delete_filter)))
             .or(warp::path("custom-filters")
-                .and(
-                    warp::get()
-                        .and_then(custom_filters::get_custom_filters),
-                )
+                .and(warp::get().and_then(custom_filters::get_custom_filters))
                 .or(warp::put().and(
                     warp::path("custom-filters")
                         .and(warp::body::json())
@@ -155,10 +149,7 @@ pub(crate) fn start_web_gui_server(
                         .and_then(custom_filters::put_custom_filters),
                 )))
             .or(warp::path("exclusions")
-                .and(
-                    warp::get()
-                        .and_then(exclusions::get_exclusions),
-                )
+                .and(warp::get().and_then(exclusions::get_exclusions))
                 .or(warp::put().and(
                     warp::path("exclusions")
                         .and(warp::body::json())
