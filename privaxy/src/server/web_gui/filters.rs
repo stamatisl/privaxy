@@ -16,7 +16,7 @@ pub struct FilterStatusChangeRequest {
 
 #[serde_as]
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-pub struct AddFilterRequest {
+pub struct FilterRequest {
     pub enabled: bool,
     pub title: String,
     pub group: FilterGroup,
@@ -26,13 +26,12 @@ pub struct AddFilterRequest {
 
 pub async fn change_filter_status(
     filter_status_change_request: Vec<FilterStatusChangeRequest>,
-    http_client: reqwest::Client,
     configuration_updater_sender: Sender<Configuration>,
     configuration_save_lock: Arc<tokio::sync::Mutex<()>>,
 ) -> Result<impl warp::Reply, Infallible> {
     let _guard = configuration_save_lock.lock().await;
 
-    let mut configuration = match Configuration::read_from_home(http_client).await {
+    let mut configuration = match Configuration::read_from_home().await {
         Ok(configuration) => configuration,
         Err(err) => {
             log::error!("Failed to change filter status: {err}");
@@ -62,9 +61,8 @@ pub async fn change_filter_status(
 }
 
 pub async fn get_filters_configuration(
-    http_client: reqwest::Client,
 ) -> Result<impl warp::Reply, Infallible> {
-    let configuration = match Configuration::read_from_home(http_client).await {
+    let configuration = match Configuration::read_from_home().await {
         Ok(configuration) => configuration,
         Err(err) => {
             log::error!("Failed to get filters configuration: {err}");
@@ -81,7 +79,7 @@ pub async fn get_filters_configuration(
 }
 
 pub async fn add_filter(
-    add_filter_request: AddFilterRequest,
+    filter_request: FilterRequest,
     http_client: reqwest::Client,
     configuration_updater_sender: Sender<Configuration>,
     configuration_save_lock: Arc<tokio::sync::Mutex<()>>,
@@ -89,7 +87,7 @@ pub async fn add_filter(
     let _guard = configuration_save_lock.lock().await;
 
     // Read the current configuration
-    let mut configuration = match Configuration::read_from_home(http_client.clone()).await {
+    let mut configuration = match Configuration::read_from_home().await {
         Ok(configuration) => configuration,
         Err(err) => {
             log::error!("Failed to read configuration: {err}");
@@ -98,13 +96,13 @@ pub async fn add_filter(
     };
 
     // Clone the URL to avoid moving the original value
-    let filter_url = add_filter_request.url.clone();
+    let filter_url = filter_request.url.clone();
     if configuration
         .filters
         .iter()
-        .any(|filter| filter.url == add_filter_request.url)
+        .any(|filter| filter.url == filter_request.url)
     {
-        log::warn!("Filter with URL {} already exists", add_filter_request.url);
+        log::warn!("Filter with URL {} already exists", filter_request.url);
         return Ok(Response::builder()
             .status(http::StatusCode::CONFLICT)
             .body("Filter already exists".to_string())
@@ -113,11 +111,11 @@ pub async fn add_filter(
 
     // Add the new filter to the configuration
     let mut new_filter = Filter {
-        enabled: add_filter_request.enabled,
+        enabled: filter_request.enabled,
         url: filter_url,
-        title: add_filter_request.title.clone(),
-        group: add_filter_request.group,
-        file_name: calculate_sha256_hex(&add_filter_request.url.to_string()), // Generate a unique file name
+        title: filter_request.title.clone(),
+        group: filter_request.group,
+        file_name: calculate_sha256_hex(&filter_request.url.to_string()), // Generate a unique file name
     };
 
     match configuration
@@ -159,5 +157,50 @@ pub async fn add_filter(
     Ok(Response::builder()
         .status(http::StatusCode::CREATED)
         .body("Filter added successfully".to_string())
+        .unwrap())
+}
+
+pub async fn delete_filter(
+    filter_request: FilterRequest,
+    configuration_updater_sender: Sender<Configuration>,
+    configuration_save_lock: Arc<tokio::sync::Mutex<()>>,
+) -> Result<impl warp::Reply, Infallible> {
+    let _guard = configuration_save_lock.lock().await;
+
+    let configuration = match Configuration::read_from_home().await {
+        Ok(configuration) => configuration,
+        Err(err) => {
+            log::error!("Failed to read configuration: {err}");
+            return Ok(get_error_response(err));
+        }
+    };
+
+    let mut new_configuration = configuration.clone();
+    new_configuration
+        .filters
+        .retain(|filter| filter.url != filter_request.url);
+
+    if let Err(err) = new_configuration.save().await {
+        log::error!("Failed to save configuration: {err}");
+        return Ok(Response::builder()
+            .status(http::StatusCode::INTERNAL_SERVER_ERROR)
+            .body(format!("Failed to save configuration: {err}"))
+            .unwrap());
+    }
+
+    if let Err(err) = configuration_updater_sender
+        .send(new_configuration.clone())
+        .await
+    {
+        log::error!("Failed to send updated configuration: {err}");
+        return Ok(Response::builder()
+            .status(http::StatusCode::INTERNAL_SERVER_ERROR)
+            .body(format!("Failed to send updated configuration: {err}"))
+            .unwrap());
+    }
+
+    Ok(Response::builder()
+        .status(http::StatusCode::NO_CONTENT)
+        .body("Filter deleted successfully".to_string())
         .unwrap())
 }
