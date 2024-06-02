@@ -1,5 +1,6 @@
 use super::get_error_response;
 use crate::configuration::{calculate_sha256_hex, Configuration, Filter, FilterGroup};
+use crate::web_gui::ApiError;
 use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
 
@@ -104,7 +105,12 @@ pub async fn add_filter(
         log::warn!("Filter with URL {} already exists", filter_request.url);
         return Ok(Response::builder()
             .status(http::StatusCode::CONFLICT)
-            .body("Filter already exists".to_string())
+            .body(
+                serde_json::to_string(&ApiError {
+                    error: format!("Filter with URL {} already exists", filter_request.url),
+                })
+                .unwrap(),
+            )
             .unwrap());
     }
 
@@ -135,10 +141,7 @@ pub async fn add_filter(
     // Save the updated configuration
     if let Err(err) = configuration.save().await {
         log::error!("Failed to save configuration: {err}");
-        return Ok(Response::builder()
-            .status(http::StatusCode::INTERNAL_SERVER_ERROR)
-            .body(format!("Failed to save configuration: {err}"))
-            .unwrap());
+        return Ok(get_error_response(err));
     }
 
     // Send the updated configuration to the updater
@@ -147,15 +150,12 @@ pub async fn add_filter(
         .await
     {
         log::error!("Failed to send updated configuration: {err}");
-        return Ok(Response::builder()
-            .status(http::StatusCode::INTERNAL_SERVER_ERROR)
-            .body(format!("Failed to send updated configuration: {err}"))
-            .unwrap());
+        return Ok(get_error_response(err));
     }
 
     Ok(Response::builder()
         .status(http::StatusCode::CREATED)
-        .body("Filter added successfully".to_string())
+        .body("".to_string())
         .unwrap())
 }
 
@@ -181,10 +181,7 @@ pub async fn delete_filter(
 
     if let Err(err) = new_configuration.save().await {
         log::error!("Failed to save configuration: {err}");
-        return Ok(Response::builder()
-            .status(http::StatusCode::INTERNAL_SERVER_ERROR)
-            .body(format!("Failed to save configuration: {err}"))
-            .unwrap());
+        return Ok(get_error_response(err));
     }
 
     if let Err(err) = configuration_updater_sender
@@ -192,14 +189,10 @@ pub async fn delete_filter(
         .await
     {
         log::error!("Failed to send updated configuration: {err}");
-        return Ok(Response::builder()
-            .status(http::StatusCode::INTERNAL_SERVER_ERROR)
-            .body(format!("Failed to send updated configuration: {err}"))
-            .unwrap());
+        return Ok(get_error_response(err));
     }
-
     Ok(Response::builder()
         .status(http::StatusCode::NO_CONTENT)
-        .body("Filter deleted successfully".to_string())
+        .body("".to_string())
         .unwrap())
 }
