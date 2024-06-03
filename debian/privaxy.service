@@ -1,0 +1,15 @@
+[Unit]
+Description=Privaxy Service
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/privaxy
+Restart=always
+User=privaxy
+Group=privaxy
+Environment=RUST_LOG=info
+KillSignal=SIGTERM
+ExecReload=/bin/kill -HUP $MAINPID
+
+[Install]
+WantedBy=multi-user.target

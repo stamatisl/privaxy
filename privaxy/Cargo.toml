@@ -1,7 +1,21 @@
 [package]
 name = "privaxy"
-version = "0.3.1"
+description = "Next generation tracker and advertisement blocker"
+version = "0.6.0"
 edition = "2021"
+authors = [
+  "Pierre Barre <pierre@barre.sh>",
+  "Josh McDaniel <80354972+joshrmcdaniel@users.noreply.github.com>"
+]
+
+[package.metadata.deb]
+maintainer = "Josh McDaniel <80354972+joshrmcdaniel@users.noreply.github.com>"
+license-file = ["../LICENSE.txt", "4"]
+depends = "$auto"
+assets = [
+  ["../debian/privaxy.service", "/lib/systemd/system/privaxy.service", "644"],
+  ["target/release/privaxy", "/usr/local/bin/", "755"],
+]
 
 [[bin]]
 name = "privaxy"

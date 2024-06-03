@@ -94,7 +94,6 @@ pub(crate) async fn serve(
     let mut request_headers = req.headers().clone();
     request_headers.remove(http::header::CONNECTION);
     request_headers.remove(http::header::HOST);
-
     let mut response = match client
         .request(req.method().clone(), req.uri().to_string())
         .headers(request_headers)
@@ -103,7 +102,10 @@ pub(crate) async fn serve(
         .await
     {
         Ok(response) => response,
-        Err(err) => return Ok(get_informative_error_response(&err.to_string())),
+        Err(err) => {
+            log::error!("Failed to send request: {}", err.to_string());
+            return Ok(get_informative_error_response(&err.to_string()));
+        }
     };
 
     statistics.increment_proxied_requests();

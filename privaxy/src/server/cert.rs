@@ -14,10 +14,10 @@ use openssl::{
     },
 };
 use rustls::{Certificate, PrivateKey, ServerConfig};
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{str::FromStr, sync::Arc};
 use tokio::sync::Mutex;
 use uluru::LRUCache;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 const MAX_CACHED_CERTIFICATES: usize = 1_000;
 
@@ -111,7 +111,9 @@ impl SignedWithCaCert {
 
         let not_before = {
             let current_time = SystemTime::now();
-            let since_epoch = current_time.duration_since(UNIX_EPOCH).expect("Time went backwards");
+            let since_epoch = current_time
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards");
             // patch NotValidBefore
             Asn1Time::from_unix(since_epoch.as_secs() as i64 - 60).unwrap()
         };

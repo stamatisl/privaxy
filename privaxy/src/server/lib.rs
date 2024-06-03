@@ -61,7 +61,7 @@ pub async fn start_privaxy() -> PrivaxyServer {
         .build()
         .unwrap();
 
-    let configuration = match configuration::Configuration::read_from_home(client.clone()).await {
+    let configuration = match configuration::Configuration::read_from_home().await {
         Ok(configuration) => configuration,
         Err(err) => {
             println!(

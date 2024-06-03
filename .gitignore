@@ -5,3 +5,4 @@ web_frontend/dist
 filters/__pycache__
 node_modules
 .vscode
+**/target/*

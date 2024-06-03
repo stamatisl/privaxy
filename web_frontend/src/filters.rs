@@ -1,5 +1,5 @@
-use crate::{save_button, submit_banner, get_api_host};
 use crate::filterlists::SearchFilterList;
+use crate::{get_api_host, save_button, submit_banner};
 use reqwasm::http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::de::IoRead;
@@ -7,12 +7,12 @@ use serde_json::StreamDeserializer;
 use serde_with::{serde_as, DisplayFromStr};
 use std::fmt::Debug;
 use std::io::Cursor;
-use wasm_bindgen_futures::spawn_local;
-use yew::{html, Callback, Component, Context, Html};
-use yew::prelude::*;
-use web_sys::{HtmlInputElement, HtmlSelectElement};
-use yew::InputEvent;
 use url::Url;
+use wasm_bindgen_futures::spawn_local;
+use web_sys::{HtmlInputElement, HtmlSelectElement};
+use yew::prelude::*;
+use yew::InputEvent;
+use yew::{html, Callback, Component, Context, Html};
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 pub enum FilterGroup {
@@ -63,7 +63,7 @@ pub enum AddFilterMessage {
 }
 
 #[serde_as]
-#[derive(Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct AddFilterRequest {
     enabled: bool,
     title: String,
@@ -83,7 +83,6 @@ impl AddFilterRequest {
     }
 }
 
-
 pub struct AddFilterComponent {
     link: yew::html::Scope<Self>,
     is_open: bool,
@@ -102,7 +101,7 @@ impl Component for AddFilterComponent {
             is_open: false,
             category: FilterGroup::Default,
             url: String::new(),
-            title: String::new()
+            title: String::new(),
         }
     }
 
@@ -114,7 +113,11 @@ impl Component for AddFilterComponent {
                 if let Ok(parsed_url) = Url::parse(&url) {
                     let request_body = AddFilterRequest {
                         enabled: true,
-                        title: if title.is_empty() { self.url.clone() } else { title },
+                        title: if title.is_empty() {
+                            self.url.clone()
+                        } else {
+                            title
+                        },
                         group: category,
                         url: parsed_url,
                     };
@@ -192,11 +195,14 @@ impl Component for AddFilterComponent {
             "Add filter"
         };
 
-        let options: Html = FilterGroup::values().into_iter().map(|group| {
-            html! {
-                <option value={group.as_str()}>{group.as_str()}</option>
-            }
-        }).collect();
+        let options: Html = FilterGroup::values()
+            .into_iter()
+            .map(|group| {
+                html! {
+                    <option value={group.as_str()}>{group.as_str()}</option>
+                }
+            })
+            .collect();
 
         let url = self.url.clone();
         let category = self.category.clone();
@@ -212,7 +218,7 @@ impl Component for AddFilterComponent {
                 </button>
                 {if self.is_open {
                     html! {
-                        <div class="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50">
+                        <div class="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 ">
                             <div class="bg-white p-6 rounded-lg shadow-lg z-60">
                                 <div class="flex flex-col space-y-4">
                                     <div class="flex items-center">
@@ -273,17 +279,27 @@ impl Component for AddFilterComponent {
     }
 }
 
-
 #[derive(Deserialize, Clone, PartialEq, Eq)]
 pub struct Filter {
     enabled: bool,
-    title: String,
+    pub title: String,
     group: FilterGroup,
     file_name: String,
 }
 
+impl Filter {
+    pub fn new(title: String, group: FilterGroup, file_name: String) -> Self {
+        Self {
+            enabled: true,
+            title,
+            group,
+            file_name,
+        }
+    }
+}
+
 impl std::fmt::Display for Filter {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
             "Filter(Enabled={}, Title={}, Group={:?}, File_name={})",
@@ -299,8 +315,7 @@ pub struct FilterStatusChangeRequest {
     file_name: String,
 }
 
-#[derive(Deserialize, Clone, PartialEq, Eq)]
-pub struct FilterConfiguration(Vec<Filter>);
+pub type FilterConfiguration = Vec<Filter>;
 
 pub enum Message {
     Load,
@@ -319,6 +334,17 @@ pub struct Filters {
 impl Filters {
     fn configuration_has_changed(&self) -> bool {
         self.filter_configuration != self.filter_configuration_before_changes
+    }
+    pub fn get_filters(&self) -> Vec<Filter> {
+        self.filter_configuration.as_ref().unwrap().clone()
+    }
+
+    pub fn has_filter(&self, filter: &Filter) -> bool {
+        self.filter_configuration
+            .as_ref()
+            .unwrap()
+            .into_iter()
+            .any(|f| f.file_name == filter.file_name)
     }
 }
 
@@ -378,7 +404,6 @@ impl Component for Filters {
                     .filter_configuration
                     .as_ref()
                     .unwrap()
-                    .0
                     .iter()
                     .map(|filter| FilterStatusChangeRequest {
                         enabled: filter.enabled,
@@ -413,7 +438,6 @@ impl Component for Filters {
                 self.filter_configuration
                     .as_mut()
                     .unwrap()
-                    .0
                     .iter_mut()
                     .find(|filter| filter.file_name == filter_name)
                     .and_then(|filter| {
@@ -473,7 +497,6 @@ impl Component for Filters {
             let category_name = format!("{:?}", category);
             log::debug!("Category filter: {category_name}");
             let filters = filters
-                .0
                 .iter()
                 .filter(|filter| filter.group == category)
                 .collect::<Vec<_>>();
@@ -519,23 +542,25 @@ impl Component for Filters {
         };
 
         match &self.filter_configuration {
-            Some(filter_configuration) => html! {
-                <>
-                    { title }
-                    {success_banner}
-                    <div class="mb-5 flex space-x-4">
-                        <AddFilterComponent state={save_button::SaveButtonState::Enabled}/>
-                        <SearchFilterList />
-                        <save_button::SaveButton state={save_button_state} onclick={save_callback} />
-                    </div>
-                    { render_category(FilterGroup::Default, filter_configuration) }
-                    { render_category(FilterGroup::Ads, filter_configuration) }
-                    { render_category(FilterGroup::Privacy, filter_configuration) }
-                    { render_category(FilterGroup::Malware, filter_configuration) }
-                    { render_category(FilterGroup::Social, filter_configuration) }
-                    { render_category(FilterGroup::Regional, filter_configuration) }
-                </>
-            },
+            Some(filter_configuration) => {
+                html! {
+                        <>
+                            { title }
+                            {success_banner}
+                            <div class="mb-5 flex space-x-4">
+                                <AddFilterComponent state={save_button::SaveButtonState::Enabled}/>
+                                <SearchFilterList filter_configuration={filter_configuration.clone()}/>
+                                <save_button::SaveButton state={save_button_state} onclick={save_callback} />
+                            </div>
+                            { render_category(FilterGroup::Default, filter_configuration) }
+                            { render_category(FilterGroup::Ads, filter_configuration) }
+                            { render_category(FilterGroup::Privacy, filter_configuration) }
+                            { render_category(FilterGroup::Malware, filter_configuration) }
+                            { render_category(FilterGroup::Social, filter_configuration) }
+                            { render_category(FilterGroup::Regional, filter_configuration) }
+                        </>
+                }
+            }
             // This realistically loads way too fast for a loader to be useful. Adding one would just add
             // unwanted flickering.
             None => html! {{ title }},

@@ -4,8 +4,8 @@ use yew_router::prelude::*;
 
 mod blocking_enabled;
 mod dashboard;
-mod filters;
 mod filterlists;
+mod filters;
 mod requests;
 mod save_button;
 mod settings;

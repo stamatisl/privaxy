@@ -6,9 +6,10 @@ use serde::Serialize;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc::Sender};
+use warp::filters::BoxedFilter;
 use warp::http::Response;
 use warp::path::Tail;
-use warp::Filter;
+use warp::{http, Filter, Reply};
 
 pub(crate) mod blocking_enabled;
 pub(crate) mod custom_filters;
@@ -60,6 +61,127 @@ pub(crate) fn start_web_gui_static_files_server(bind: SocketAddr, api_addr: Sock
     });
 }
 
+fn create_routes(
+    events_sender: broadcast::Sender<events::Event>,
+    statistics: Statistics,
+    blocking_disabled_store: BlockingDisabledStore,
+    configuration_updater_sender: Sender<Configuration>,
+    ca_certificate_pem: String,
+    configuration_save_lock: Arc<tokio::sync::Mutex<()>>,
+    local_exclusions_store: LocalExclusionStore,
+    http_client: reqwest::Client,
+) -> BoxedFilter<(impl Reply,)> {
+    let events_route = warp::path("events")
+        .and(warp::ws())
+        .map(move |ws: warp::ws::Ws| {
+            let events_sender = events_sender.clone();
+            ws.on_upgrade(move |websocket| events::events(websocket, events_sender))
+        });
+
+    let statistics_route = warp::path("statistics")
+        .and(warp::ws())
+        .map(move |ws: warp::ws::Ws| {
+            let statistics = statistics.clone();
+            ws.on_upgrade(move |websocket| statistics::statistics(websocket, statistics))
+        });
+
+    let filters_route = warp::path("filters").and(
+        warp::get()
+            .and_then(filters::get_filters_configuration)
+            .or(warp::put()
+                .and(warp::body::json())
+                .and(with_configuration_updater_sender(
+                    configuration_updater_sender.clone(),
+                ))
+                .and(with_configuration_save_lock(
+                    configuration_save_lock.clone(),
+                ))
+                .and_then(filters::change_filter_status))
+            .or(warp::post()
+                .and(warp::body::json())
+                .and(with_http_client(http_client.clone()))
+                .and(with_configuration_updater_sender(
+                    configuration_updater_sender.clone(),
+                ))
+                .and(with_configuration_save_lock(
+                    configuration_save_lock.clone(),
+                ))
+                .and_then(filters::add_filter))
+            .or(warp::delete()
+                .and(warp::body::json())
+                .and(with_configuration_updater_sender(
+                    configuration_updater_sender.clone(),
+                ))
+                .and(with_configuration_save_lock(
+                    configuration_save_lock.clone(),
+                ))
+                .and_then(filters::delete_filter)),
+    );
+
+    let custom_filters_route = warp::path("custom-filters").and(
+        warp::get()
+            .and_then(custom_filters::get_custom_filters)
+            .or(warp::put()
+                .and(warp::body::json())
+                .and(with_configuration_updater_sender(
+                    configuration_updater_sender.clone(),
+                ))
+                .and(with_configuration_save_lock(
+                    configuration_save_lock.clone(),
+                ))
+                .and_then(custom_filters::put_custom_filters)),
+    );
+
+    let exclusions_route = warp::path("exclusions").and(
+        warp::get()
+            .and_then(exclusions::get_exclusions)
+            .or(warp::put()
+                .and(warp::body::json())
+                .and(with_configuration_updater_sender(
+                    configuration_updater_sender.clone(),
+                ))
+                .and(with_configuration_save_lock(
+                    configuration_save_lock.clone(),
+                ))
+                .and(with_local_exclusions_store(local_exclusions_store))
+                .and_then(exclusions::put_exclusions)),
+    );
+
+    let blocking_enabled_route = warp::path("blocking-enabled").and(
+        warp::get()
+            .and(with_blocking_disabled_store(
+                blocking_disabled_store.clone(),
+            ))
+            .and_then(blocking_enabled::get_blocking_enabled)
+            .or(warp::put()
+                .and(warp::body::json())
+                .and(with_blocking_disabled_store(blocking_disabled_store))
+                .and_then(blocking_enabled::put_blocking_enabled)),
+    );
+
+    let ca_certificate_route =
+        warp::path("privaxy_ca_certificate.pem").and(warp::get().map(move || {
+            Response::builder()
+                .header(
+                    http::header::CONTENT_DISPOSITION,
+                    "attachment; filename=privaxy_ca_certificate.pem;",
+                )
+                .body(ca_certificate_pem.clone())
+        }));
+
+    let options_route = warp::options().map(|| "");
+
+    events_route
+        .or(statistics_route)
+        .or(filters_route)
+        .or(custom_filters_route)
+        .or(exclusions_route)
+        .or(blocking_enabled_route)
+        .or(ca_certificate_route)
+        .or(options_route)
+        .boxed()
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn start_web_gui_server(
     events_sender: broadcast::Sender<events::Event>,
@@ -75,125 +197,26 @@ pub(crate) fn start_web_gui_server(
 
     let cors = warp::cors()
         .allow_any_origin()
-        .allow_methods(vec!["GET", "PUT", "POST"])
+        .allow_methods(vec!["GET", "PUT", "POST", "DELETE"])
         .allow_headers(vec![
             http::header::CONTENT_TYPE,
             http::header::CONTENT_LENGTH,
             http::header::DATE,
         ]);
 
-    tokio::spawn(async move {
-        let routes = warp::get()
-            .and(
-                warp::path("events")
-                    .and(warp::ws())
-                    .map(move |ws: warp::ws::Ws| {
-                        let events_sender = events_sender.clone();
+    let routes = create_routes(
+        events_sender,
+        statistics,
+        blocking_disabled_store,
+        configuration_updater_sender,
+        ca_certificate_pem,
+        configuration_save_lock,
+        local_exclusions_store,
+        http_client,
+    )
+    .with(cors);
 
-                        ws.on_upgrade(move |websocket| events::events(websocket, events_sender))
-                    })
-                    .or(warp::path("statistics")
-                        .and(warp::ws())
-                        .map(move |ws: warp::ws::Ws| {
-                            let statistics = statistics.clone();
-
-                            ws.on_upgrade(move |websocket| {
-                                statistics::statistics(websocket, statistics)
-                            })
-                        })),
-            )
-            .or(warp::path("filters")
-                .and(
-                    warp::get()
-                        .and(with_http_client(http_client.clone()))
-                        .and_then(filters::get_filters_configuration),
-                )
-                .or(warp::put()
-                    .and(warp::path("filters"))
-                    .and(warp::body::json())
-                    .and(with_http_client(http_client.clone()))
-                    .and(with_configuration_updater_sender(
-                        configuration_updater_sender.clone(),
-                    ))
-                    .and(with_configuration_save_lock(
-                        configuration_save_lock.clone(),
-                    ))
-                    .and_then(filters::change_filter_status))
-                .or(warp::post()
-                    .and(warp::path("filters"))
-                    .and(warp::body::json())
-                    .and(with_http_client(http_client.clone()))
-                    .and(with_configuration_updater_sender(
-                        configuration_updater_sender.clone(),
-                    ))
-                    .and(with_configuration_save_lock(
-                        configuration_save_lock.clone(),
-                    ))
-                    .and_then(filters::add_filter)),
-                )
-            .or(warp::path("custom-filters")
-                .and(
-                    warp::get()
-                        .and(with_http_client(http_client.clone()))
-                        .and_then(custom_filters::get_custom_filters),
-                )
-                .or(warp::put().and(
-                    warp::path("custom-filters")
-                        .and(warp::body::json())
-                        .and(with_http_client(http_client.clone()))
-                        .and(with_configuration_updater_sender(
-                            configuration_updater_sender.clone(),
-                        ))
-                        .and(with_configuration_save_lock(
-                            configuration_save_lock.clone(),
-                        ))
-                        .and_then(custom_filters::put_custom_filters),
-                )))
-            .or(warp::path("exclusions")
-                .and(
-                    warp::get()
-                        .and(with_http_client(http_client.clone()))
-                        .and_then(exclusions::get_exclusions),
-                )
-                .or(warp::put().and(
-                    warp::path("exclusions")
-                        .and(warp::body::json())
-                        .and(with_http_client(http_client.clone()))
-                        .and(with_configuration_updater_sender(
-                            configuration_updater_sender.clone(),
-                        ))
-                        .and(with_configuration_save_lock(configuration_save_lock))
-                        .and(with_local_exclusions_store(local_exclusions_store))
-                        .and_then(exclusions::put_exclusions),
-                )))
-            .or(warp::path("blocking-enabled")
-                .and(
-                    warp::get()
-                        .and(with_blocking_disabled_store(
-                            blocking_disabled_store.clone(),
-                        ))
-                        .and_then(blocking_enabled::get_blocking_enabled),
-                )
-                .or(warp::put()
-                    .and(warp::path("blocking-enabled"))
-                    .and(warp::body::json())
-                    .and(with_blocking_disabled_store(blocking_disabled_store).clone())
-                    .and_then(blocking_enabled::put_blocking_enabled)))
-            .or(
-                warp::path("privaxy_ca_certificate.pem").and(warp::get().map(move || {
-                    Response::builder()
-                        .header(
-                            http::header::CONTENT_DISPOSITION,
-                            "attachment; filename=privaxy_ca_certificate.pem;",
-                        )
-                        .body(ca_certificate_pem.clone())
-                })),
-            )
-            .or(warp::options().map(|| ""))
-            .with(cors);
-
-        warp::serve(routes).run(bind).await
-    });
+    tokio::spawn(async move { warp::serve(routes).run(bind).await });
 }
 
 fn with_local_exclusions_store(
