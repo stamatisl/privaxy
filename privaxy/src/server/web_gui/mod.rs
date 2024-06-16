@@ -15,6 +15,7 @@ pub(crate) mod blocking_enabled;
 pub(crate) mod custom_filters;
 pub(crate) mod events;
 pub(crate) mod exclusions;
+mod filterlists;
 pub(crate) mod filters;
 pub(crate) mod statistics;
 
@@ -23,30 +24,25 @@ pub(crate) struct ApiError {
     error: String,
 }
 
-pub(crate) fn start_web_gui_static_files_server(bind: SocketAddr, api_addr: SocketAddr) {
-    let filter = warp::get().and(warp::path::tail()).map(move |tail: Tail| {
+pub(crate) fn start_frontend(
+    events_sender: broadcast::Sender<events::Event>,
+    statistics: Statistics,
+    blocking_disabled_store: BlockingDisabledStore,
+    configuration_updater_sender: Sender<Configuration>,
+    ca_certificate_pem: String,
+    configuration_save_lock: Arc<tokio::sync::Mutex<()>>,
+    local_exclusions_store: LocalExclusionStore,
+    bind: SocketAddr,
+) {
+    let static_files_routes = warp::get().and(warp::path::tail()).map(move |tail: Tail| {
         let tail_str = tail.as_str();
-
-        let mut is_index = tail_str == "index.html";
 
         let file_contents = match WEBAPP_FRONTEND_DIR.get_file(tail_str) {
             Some(file) => file.contents().to_vec(),
             None => {
-                is_index = true;
-
                 let index_html = WEBAPP_FRONTEND_DIR.get_file("index.html").unwrap();
-                WEBAPP_FRONTEND_DIR.get_file("index.html").unwrap();
-
                 index_html.contents().to_vec()
             }
-        };
-
-        let file_contents = if is_index {
-            let index_utf8 = String::from_utf8(file_contents).unwrap();
-
-            Vec::from(index_utf8.replace("{#api_host#}", &api_addr.to_string()))
-        } else {
-            file_contents
         };
 
         let mime = mime_guess::from_path(tail_str).first_raw().unwrap_or("");
@@ -56,12 +52,35 @@ pub(crate) fn start_web_gui_static_files_server(bind: SocketAddr, api_addr: Sock
             .body(file_contents)
     });
 
+    let cors = warp::cors()
+        .allow_any_origin()
+        .allow_methods(vec!["GET", "PUT", "POST", "DELETE"])
+        .allow_headers(vec![
+            http::header::CONTENT_TYPE,
+            http::header::CONTENT_LENGTH,
+            http::header::DATE,
+        ]);
+    let http_client = reqwest::Client::new();
+
+    let api_routes = create_api_routes(
+        events_sender,
+        statistics,
+        blocking_disabled_store,
+        configuration_updater_sender,
+        ca_certificate_pem,
+        configuration_save_lock,
+        local_exclusions_store,
+        http_client,
+    )
+    .with(cors);
+    let combined_routes = api_routes.or(static_files_routes);
+
     tokio::spawn(async move {
-        warp::serve(filter).run(bind).await;
+        warp::serve(combined_routes).run(bind).await;
     });
 }
 
-fn create_routes(
+fn create_api_routes(
     events_sender: broadcast::Sender<events::Event>,
     statistics: Statistics,
     blocking_disabled_store: BlockingDisabledStore,
@@ -71,6 +90,7 @@ fn create_routes(
     local_exclusions_store: LocalExclusionStore,
     http_client: reqwest::Client,
 ) -> BoxedFilter<(impl Reply,)> {
+    let api_path = warp::path("api");
     let events_route = warp::path("events")
         .and(warp::ws())
         .map(move |ws: warp::ws::Ws| {
@@ -85,100 +105,56 @@ fn create_routes(
             ws.on_upgrade(move |websocket| statistics::statistics(websocket, statistics))
         });
 
-    let filters_route = warp::path("filters").and(
-        warp::get()
-            .and_then(filters::get_filters_configuration)
-            .or(warp::put()
-                .and(warp::body::json())
-                .and(with_configuration_updater_sender(
-                    configuration_updater_sender.clone(),
-                ))
-                .and(with_configuration_save_lock(
-                    configuration_save_lock.clone(),
-                ))
-                .and_then(filters::change_filter_status))
-            .or(warp::post()
-                .and(warp::body::json())
-                .and(with_http_client(http_client.clone()))
-                .and(with_configuration_updater_sender(
-                    configuration_updater_sender.clone(),
-                ))
-                .and(with_configuration_save_lock(
-                    configuration_save_lock.clone(),
-                ))
-                .and_then(filters::add_filter))
-            .or(warp::delete()
-                .and(warp::body::json())
-                .and(with_configuration_updater_sender(
-                    configuration_updater_sender.clone(),
-                ))
-                .and(with_configuration_save_lock(
-                    configuration_save_lock.clone(),
-                ))
-                .and_then(filters::delete_filter)),
-    );
-
-    let custom_filters_route = warp::path("custom-filters").and(
-        warp::get()
-            .and_then(custom_filters::get_custom_filters)
-            .or(warp::put()
-                .and(warp::body::json())
-                .and(with_configuration_updater_sender(
-                    configuration_updater_sender.clone(),
-                ))
-                .and(with_configuration_save_lock(
-                    configuration_save_lock.clone(),
-                ))
-                .and_then(custom_filters::put_custom_filters)),
-    );
-
-    let exclusions_route = warp::path("exclusions").and(
-        warp::get()
-            .and_then(exclusions::get_exclusions)
-            .or(warp::put()
-                .and(warp::body::json())
-                .and(with_configuration_updater_sender(
-                    configuration_updater_sender.clone(),
-                ))
-                .and(with_configuration_save_lock(
-                    configuration_save_lock.clone(),
-                ))
-                .and(with_local_exclusions_store(local_exclusions_store))
-                .and_then(exclusions::put_exclusions)),
-    );
+    let filters_route = warp::path("filters").and(filters::create_routes(
+        configuration_updater_sender.clone(),
+        configuration_save_lock.clone(),
+        http_client.clone(),
+    ));
+    let custom_filters_route = warp::path("custom-filters").and(custom_filters::create_routes(
+        configuration_updater_sender.clone(),
+        configuration_save_lock.clone(),
+    ));
+    let exclusions_route = warp::path("exclusions").and(exclusions::create_routes(
+        configuration_updater_sender.clone(),
+        configuration_save_lock.clone(),
+        local_exclusions_store.clone(),
+    ));
 
     let blocking_enabled_route = warp::path("blocking-enabled").and(
-        warp::get()
-            .and(with_blocking_disabled_store(
-                blocking_disabled_store.clone(),
-            ))
-            .and_then(blocking_enabled::get_blocking_enabled)
-            .or(warp::put()
-                .and(warp::body::json())
-                .and(with_blocking_disabled_store(blocking_disabled_store))
-                .and_then(blocking_enabled::put_blocking_enabled)),
+        blocking_enabled::create_routes(blocking_disabled_store.clone()),
     );
 
-    let ca_certificate_route =
-        warp::path("privaxy_ca_certificate.pem").and(warp::get().map(move || {
+    let ca_certificate_route = ca_certificate_routes(ca_certificate_pem.clone());
+
+    let options_route = warp::options().map(|| "");
+
+    let filterlists_route = warp::path("filterlists").and(filterlists::create_routes());
+
+    api_path
+        .and(
+            events_route
+                .or(statistics_route)
+                .or(filters_route)
+                .or(custom_filters_route)
+                .or(exclusions_route)
+                .or(blocking_enabled_route)
+                .or(ca_certificate_route)
+                .or(options_route)
+                .or(filterlists_route),
+        )
+        .boxed()
+}
+
+fn ca_certificate_routes(ca_certificate_pem: String) -> BoxedFilter<(impl Reply,)> {
+    warp::path("privaxy_ca_certificate.pem")
+        .and(warp::get().map(move || {
             Response::builder()
                 .header(
                     http::header::CONTENT_DISPOSITION,
                     "attachment; filename=privaxy_ca_certificate.pem;",
                 )
                 .body(ca_certificate_pem.clone())
-        }));
-
-    let options_route = warp::options().map(|| "");
-
-    events_route
-        .or(statistics_route)
-        .or(filters_route)
-        .or(custom_filters_route)
-        .or(exclusions_route)
-        .or(blocking_enabled_route)
-        .or(ca_certificate_route)
-        .or(options_route)
+        }))
         .boxed()
 }
 
@@ -204,7 +180,7 @@ pub(crate) fn start_web_gui_server(
             http::header::DATE,
         ]);
 
-    let routes = create_routes(
+    let routes = create_api_routes(
         events_sender,
         statistics,
         blocking_disabled_store,
@@ -225,7 +201,7 @@ fn with_local_exclusions_store(
     warp::any().map(move || local_exclusions_store.clone())
 }
 
-fn with_configuration_save_lock(
+pub(self) fn with_configuration_save_lock(
     configuration_save_lock: Arc<tokio::sync::Mutex<()>>,
 ) -> impl Filter<Extract = (Arc<tokio::sync::Mutex<()>>,), Error = std::convert::Infallible> + Clone
 {
@@ -238,13 +214,13 @@ fn with_blocking_disabled_store(
     warp::any().map(move || blocking_disabled.clone())
 }
 
-fn with_configuration_updater_sender(
+pub(self) fn with_configuration_updater_sender(
     sender: Sender<Configuration>,
 ) -> impl Filter<Extract = (Sender<Configuration>,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || sender.clone())
 }
 
-fn with_http_client(
+pub(self) fn with_http_client(
     http_client: reqwest::Client,
 ) -> impl Filter<Extract = (reqwest::Client,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || http_client.clone())
