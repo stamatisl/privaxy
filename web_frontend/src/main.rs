@@ -6,6 +6,7 @@ mod blocking_enabled;
 mod dashboard;
 mod filterlists;
 mod filters;
+mod general;
 mod requests;
 mod save_button;
 mod settings;

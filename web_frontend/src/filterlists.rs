@@ -480,7 +480,7 @@ impl SearchFilterList {
         }
     }
 
-    fn get_language_name(&self, language_ids: Vec<u64>) -> String {
+    fn get_language_name(&self, language_ids: Vec<u32>) -> String {
         self.languages
             .iter()
             .filter(|lang| language_ids.contains(&lang.id))
@@ -489,7 +489,7 @@ impl SearchFilterList {
             .join(", ")
     }
 
-    fn get_license_name(&self, license_id: u64) -> String {
+    fn get_license_name(&self, license_id: u32) -> String {
         self.licenses
             .iter()
             .filter(|license| license.id == license_id)
