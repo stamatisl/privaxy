@@ -7,6 +7,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc::Sender};
 use warp::filters::BoxedFilter;
+use warp::http::header::{HeaderMap, HeaderValue};
 use warp::http::Response;
 use warp::path::Tail;
 use warp::{http, Filter, Reply};
@@ -17,6 +18,7 @@ pub(crate) mod events;
 pub(crate) mod exclusions;
 mod filterlists;
 pub(crate) mod filters;
+pub(crate) mod settings;
 pub(crate) mod statistics;
 
 #[derive(Debug, Serialize)]
@@ -67,7 +69,6 @@ pub(crate) fn start_frontend(
         statistics,
         blocking_disabled_store,
         configuration_updater_sender,
-        ca_certificate_pem,
         configuration_save_lock,
         local_exclusions_store,
         http_client,
@@ -85,11 +86,12 @@ fn create_api_routes(
     statistics: Statistics,
     blocking_disabled_store: BlockingDisabledStore,
     configuration_updater_sender: Sender<Configuration>,
-    ca_certificate_pem: String,
     configuration_save_lock: Arc<tokio::sync::Mutex<()>>,
     local_exclusions_store: LocalExclusionStore,
     http_client: reqwest::Client,
 ) -> BoxedFilter<(impl Reply,)> {
+    let def_headers =
+        warp::filters::reply::default_header(http::header::CONTENT_TYPE, "application/json");
     let api_path = warp::path("api");
     let events_route = warp::path("events")
         .and(warp::ws())
@@ -119,16 +121,30 @@ fn create_api_routes(
         configuration_save_lock.clone(),
         local_exclusions_store.clone(),
     ));
+    let settings_route = warp::path("settings").and(settings::create_routes());
 
     let blocking_enabled_route = warp::path("blocking-enabled").and(
         blocking_enabled::create_routes(blocking_disabled_store.clone()),
     );
 
-    let ca_certificate_route = ca_certificate_routes(ca_certificate_pem.clone());
-
     let options_route = warp::options().map(|| "");
 
     let filterlists_route = warp::path("filterlists").and(filterlists::create_routes());
+
+    let not_found = warp::path::tail()
+        .map(move |tail: Tail| {
+            let tail_str = tail.as_str();
+            Response::builder()
+                .status(http::StatusCode::NOT_FOUND)
+                .body(
+                    serde_json::to_string(&ApiError {
+                        error: format!("Path not found: /api/{}", tail_str),
+                    })
+                    .unwrap(),
+                )
+                .unwrap()
+        })
+        .boxed();
 
     api_path
         .and(
@@ -138,23 +154,12 @@ fn create_api_routes(
                 .or(custom_filters_route)
                 .or(exclusions_route)
                 .or(blocking_enabled_route)
-                .or(ca_certificate_route)
+                .or(settings_route)
                 .or(options_route)
-                .or(filterlists_route),
+                .or(filterlists_route)
+                .or(not_found),
         )
-        .boxed()
-}
-
-fn ca_certificate_routes(ca_certificate_pem: String) -> BoxedFilter<(impl Reply,)> {
-    warp::path("privaxy_ca_certificate.pem")
-        .and(warp::get().map(move || {
-            Response::builder()
-                .header(
-                    http::header::CONTENT_DISPOSITION,
-                    "attachment; filename=privaxy_ca_certificate.pem;",
-                )
-                .body(ca_certificate_pem.clone())
-        }))
+        .with(def_headers)
         .boxed()
 }
 

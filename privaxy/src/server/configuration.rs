@@ -19,11 +19,14 @@ use tokio::sync::{self, mpsc::Sender};
 use tokio::{fs, sync::mpsc::Receiver};
 use url::Url;
 
+/// Default configuration directory name.
 const CONFIGURATION_DIRECTORY_NAME: &str = ".privaxy";
+/// Default configuration file name.
 const CONFIGURATION_FILE_NAME: &str = "config";
+/// Default filters directory name.
 const FILTERS_DIRECTORY_NAME: &str = "filters";
 
-// Update filters every 10 minutes.
+/// Update filters every 10 minutes.
 const FILTERS_UPDATE_AFTER: Duration = Duration::from_secs(60 * 10);
 
 type ConfigurationResult<T> = Result<T, ConfigurationError>;
@@ -65,20 +68,30 @@ pub struct DefaultFilter {
 #[serde_as]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Filter {
+    /// If the filter is enabled
     pub enabled: bool,
+    /// Title of the filter
     pub title: String,
+    /// Group of the filter
     pub group: FilterGroup,
+    /// Local file name of the filter
     pub file_name: String,
     #[serde_as(as = "DisplayFromStr")]
+    /// Remote URL of the filter
     pub url: Url,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+/// Network configuration for Privaxy
 pub struct NetworkConfig {
+    /// Bind address for the proxy server.
     pub bind_addr: String,
+    /// Port for the proxy server.
     pub proxy_port: u16,
+    /// Port for the web server.
     pub web_port: u16,
-    pub api_port: u16,
+    /// Enable TLS for the web server.
+    pub tls: bool,
 }
 
 pub struct DefaultFilters(Vec<DefaultFilter>);
@@ -105,7 +118,7 @@ impl DefaultFilters {
     ) -> Option<DefaultFilter> {
         match Url::parse(url) {
             Ok(parsed_url) => {
-                let file_name = calculate_sha256_hex(url);
+                let file_name = calc_filter_filename(url);
                 Some(DefaultFilter {
                     enabled_by_default,
                     file_name,
@@ -249,10 +262,14 @@ impl DefaultFilters {
     }
 }
 
-pub(crate) fn calculate_sha256_hex(input: &str) -> String {
+fn calculate_sha256_hex(input: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(input);
     hex::encode(hasher.finalize())
+}
+
+pub(crate) fn calc_filter_filename(filename: &str) -> String {
+    format!("{}.txt", calculate_sha256_hex(filename))
 }
 
 impl Filter {
@@ -560,9 +577,9 @@ impl Configuration {
             },
             network: NetworkConfig {
                 bind_addr: "127.0.0.1".to_string(),
-                api_port: 8200,
                 proxy_port: 8100,
-                web_port: 8000,
+                web_port: 8200,
+                tls: false,
             },
             exclusions: BTreeSet::new(),
             custom_filters: Vec::new(),

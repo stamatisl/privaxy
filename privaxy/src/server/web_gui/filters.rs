@@ -1,5 +1,5 @@
 use super::get_error_response;
-use crate::configuration::{calculate_sha256_hex, Configuration, Filter, FilterGroup};
+use crate::configuration::{calc_filter_filename, Configuration, Filter, FilterGroup};
 use crate::web_gui::ApiError;
 use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
@@ -122,7 +122,7 @@ async fn add_filter(
         url: filter_url,
         title: filter_request.title.clone(),
         group: filter_request.group,
-        file_name: calculate_sha256_hex(&filter_request.url.to_string()) + ".txt",
+        file_name: calc_filter_filename(&filter_request.url.to_string()),
     };
 
     match configuration

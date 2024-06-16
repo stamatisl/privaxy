@@ -141,7 +141,7 @@ pub async fn start_privaxy() -> PrivaxyServer {
             parse_ip_address(&network_config.bind_addr.clone())
         }
     };
-    let web_api_server_addr = SocketAddr::from((ip, network_config.api_port));
+    let web_api_server_addr = SocketAddr::from((ip, network_config.web_port));
 
     web_gui::start_frontend(
         broadcast_tx.clone(),
