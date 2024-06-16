@@ -158,43 +158,6 @@ fn ca_certificate_routes(ca_certificate_pem: String) -> BoxedFilter<(impl Reply,
         .boxed()
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn start_web_gui_server(
-    events_sender: broadcast::Sender<events::Event>,
-    statistics: Statistics,
-    blocking_disabled_store: BlockingDisabledStore,
-    configuration_updater_sender: Sender<Configuration>,
-    ca_certificate_pem: String,
-    configuration_save_lock: Arc<tokio::sync::Mutex<()>>,
-    local_exclusions_store: LocalExclusionStore,
-    bind: SocketAddr,
-) {
-    let http_client = reqwest::Client::new();
-
-    let cors = warp::cors()
-        .allow_any_origin()
-        .allow_methods(vec!["GET", "PUT", "POST", "DELETE"])
-        .allow_headers(vec![
-            http::header::CONTENT_TYPE,
-            http::header::CONTENT_LENGTH,
-            http::header::DATE,
-        ]);
-
-    let routes = create_api_routes(
-        events_sender,
-        statistics,
-        blocking_disabled_store,
-        configuration_updater_sender,
-        ca_certificate_pem,
-        configuration_save_lock,
-        local_exclusions_store,
-        http_client,
-    )
-    .with(cors);
-
-    tokio::spawn(async move { warp::serve(routes).run(bind).await });
-}
-
 fn with_local_exclusions_store(
     local_exclusions_store: LocalExclusionStore,
 ) -> impl Filter<Extract = (LocalExclusionStore,), Error = std::convert::Infallible> + Clone {
