@@ -148,7 +148,6 @@ pub async fn start_privaxy() -> PrivaxyServer {
         statistics.clone(),
         blocking_disabled_store.clone(),
         configuration_updater_tx.clone(),
-        ca_certificate_pem.clone(),
         configuration_save_lock.clone(),
         local_exclusion_store.clone(),
         web_api_server_addr,

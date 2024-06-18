@@ -2,13 +2,12 @@ use super::get_error_response;
 use warp::http::Response;
 use warp::Filter as RouteFilter;
 
-use serde::Deserialize;
 use std::convert::Infallible;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use warp::filters::BoxedFilter;
 
-use crate::configuration::{self, Ca, Configuration, ConfigurationError};
+use crate::configuration::{self, Ca, Configuration};
 
 async fn get_network_settings() -> Result<Box<dyn warp::Reply>, Infallible> {
     log::debug!("Getting network settings");

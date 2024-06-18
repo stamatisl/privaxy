@@ -7,7 +7,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc::Sender};
 use warp::filters::BoxedFilter;
-use warp::http::header::{HeaderMap, HeaderValue};
 use warp::http::Response;
 use warp::path::Tail;
 use warp::{http, Filter, Reply};
@@ -31,7 +30,6 @@ pub(crate) fn start_frontend(
     statistics: Statistics,
     blocking_disabled_store: BlockingDisabledStore,
     configuration_updater_sender: Sender<Configuration>,
-    ca_certificate_pem: String,
     configuration_save_lock: Arc<tokio::sync::Mutex<()>>,
     local_exclusions_store: LocalExclusionStore,
     bind: SocketAddr,
