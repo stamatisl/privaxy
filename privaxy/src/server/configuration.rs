@@ -8,6 +8,7 @@ use openssl::{
     pkey::{PKey, Private},
     x509::X509,
 };
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use sha2::{Digest, Sha256};
@@ -92,6 +93,38 @@ pub struct NetworkConfig {
     pub web_port: u16,
     /// Enable TLS for the web server.
     pub tls: bool,
+}
+
+impl NetworkConfig {
+    pub(crate) fn validate(&self) -> ConfigurationResult<()> {
+        if self.proxy_port == 0 {
+            return Err(ConfigurationError::NetworkError(
+                "Proxy port cannot be 0".to_string(),
+            ));
+        };
+        if self.web_port == 0 {
+            return Err(ConfigurationError::NetworkError(
+                "Web port cannot be 0".to_string(),
+            ));
+        };
+        if self.proxy_port == self.web_port {
+            return Err(ConfigurationError::NetworkError(
+                "Proxy and web ports cannot be the same".to_string(),
+            ));
+        };
+        if self.bind_addr.is_empty() {
+            return Err(ConfigurationError::NetworkError(
+                "Bind address cannot be empty".to_string(),
+            ));
+        };
+        let addr_regex = Regex::new(r"^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$");
+        if !addr_regex.unwrap().is_match(&self.bind_addr) {
+            return Err(ConfigurationError::NetworkError(
+                format!("Invalid bind address: {}", self.bind_addr).to_string(),
+            ));
+        };
+        Ok(())
+    }
 }
 
 pub struct DefaultFilters(Vec<DefaultFilter>);
@@ -358,6 +391,8 @@ pub enum ConfigurationError {
     UnableToDecodePem(#[from] openssl::error::ErrorStack),
     #[error("filter error: {0}")]
     FilterError(String),
+    #[error("network error: {0}")]
+    NetworkError(String),
 }
 
 impl Configuration {
@@ -509,6 +544,18 @@ impl Configuration {
                 ))
             }
         }
+    }
+
+    pub async fn set_network_settings(
+        &mut self,
+        network_config: &NetworkConfig,
+    ) -> ConfigurationResult<()> {
+        if let Err(err) = network_config.validate() {
+            log::error!("Failed to validate network settings: {err}");
+            return Err(err);
+        };
+        self.network = network_config.clone();
+        Ok(())
     }
 
     pub async fn ca_certificate(&self) -> ConfigurationResult<X509> {

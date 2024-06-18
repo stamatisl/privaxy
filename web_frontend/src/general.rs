@@ -1,10 +1,10 @@
 use crate::save_button;
+use regex::Regex;
 use reqwasm::http::Request;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
 use yew::{html, Callback, Component, Context, Html};
-use regex::Regex;
 
 pub enum Message {
     Load,
@@ -144,11 +144,13 @@ impl Component for GeneralSettings {
                 if let Some(ref mut network_settings) = self.network_settings {
                     network_settings.raw_proxy_port = value.clone();
                     network_settings.proxy_port_error = match value.parse::<u16>() {
-                        Ok(p) if p >= 1=> {
+                        Ok(p) if p >= 1 => {
                             network_settings.current_config.proxy_port = p;
                             None
                         }
-                        _ => Some("Invalid proxy port. Must be a number between 1 and 65535.".to_string()),
+                        _ => Some(
+                            "Invalid proxy port. Must be a number between 1 and 65535.".to_string(),
+                        ),
                     };
                 }
             }
@@ -168,11 +170,13 @@ impl Component for GeneralSettings {
                 if let Some(ref mut network_settings) = self.network_settings {
                     network_settings.raw_web_port = value.clone();
                     network_settings.web_port_error = match value.parse::<u16>() {
-                        Ok(p) if p >= 1=> {
+                        Ok(p) if p >= 1 => {
                             network_settings.current_config.web_port = p;
                             None
                         }
-                        _ => Some("Invalid web port. Must be a number between 1 and 65535.".to_string()),
+                        _ => Some(
+                            "Invalid web port. Must be a number between 1 and 65535.".to_string(),
+                        ),
                     };
                 }
             }
@@ -181,7 +185,11 @@ impl Component for GeneralSettings {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let render_setting = |setting_name: &str, setting_value: String, oninput: Callback<InputEvent>, error: Option<&String>, description: &str| {
+        let render_setting = |setting_name: &str,
+                              setting_value: String,
+                              oninput: Callback<InputEvent>,
+                              error: Option<&String>,
+                              description: &str| {
             html! {
                 <div class="mb-4" style="display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 2px 0;">
                     <div style="display: flex; align-items: center; width: 100%;">
@@ -200,7 +208,9 @@ impl Component for GeneralSettings {
             }
         };
 
-        let render_boolean_setting = |setting_name: &str, setting_value: bool, description: &str| {
+        let render_boolean_setting = |setting_name: &str,
+                                      setting_value: bool,
+                                      description: &str| {
             let checkbox_callback = ctx.link().callback(|_| Message::Load);
             html! {
                 <div class="mb-4" style="display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 2px 0;">
@@ -227,7 +237,7 @@ impl Component for GeneralSettings {
                                 html! {
                                     <>
                                     { render_setting(
-                                        "Bind address", 
+                                        "Bind address",
                                         network_settings.raw_bind_addr.clone(),
                                         ctx.link().callback(|e: InputEvent| {
                                             let input: web_sys::HtmlInputElement = e.target_unchecked_into();

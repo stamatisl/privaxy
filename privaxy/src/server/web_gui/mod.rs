@@ -121,7 +121,10 @@ fn create_api_routes(
         configuration_save_lock.clone(),
         local_exclusions_store.clone(),
     ));
-    let settings_route = warp::path("settings").and(settings::create_routes());
+    let settings_route = warp::path("settings").and(settings::create_routes(
+        configuration_updater_sender.clone(),
+        configuration_save_lock.clone(),
+    ));
 
     let blocking_enabled_route = warp::path("blocking-enabled").and(
         blocking_enabled::create_routes(blocking_disabled_store.clone()),
