@@ -360,17 +360,123 @@ impl From<DefaultFilter> for Filter {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Ca {
+    #[serde(default)]
     ca_certificate: Option<String>,
+    #[serde(default)]
     ca_private_key: Option<String>,
+    #[serde(default)]
     ca_certificate_path: Option<String>,
+    #[serde(default)]
     ca_private_key_path: Option<String>,
+}
+
+impl Ca {
+    async fn validate(&self) -> Result<(), ConfigurationError> {
+        let ca_cert = match self.get_ca_certificate().await {
+            Ok(cert) => cert,
+            Err(err) => {
+                return Err(ConfigurationError::CaError(format!(
+                    "Failed to read CA certificate: {err}"
+                )))
+            }
+        };
+        let ca_pkey = match self.get_ca_private_key().await {
+            Ok(pkey) => pkey,
+            Err(err) => {
+                return Err(ConfigurationError::CaError(format!(
+                    "Failed to read CA private key: {err}"
+                )))
+            }
+        };
+        let ca_pub_key = match ca_cert.public_key() {
+            Ok(key) => key,
+            Err(err) => {
+                return Err(ConfigurationError::CaError(format!(
+                    "Failed to convert CA private key to PEM: {err}"
+                )))
+            }
+        };
+        if ca_pkey.public_eq(&ca_pub_key) {
+            Ok(())
+        } else {
+            Err(ConfigurationError::CaError(
+                "CA certificate key does not match the CA certificate".to_string(),
+            ))
+        }
+    }
+
+    pub async fn get_ca_certificate(&self) -> ConfigurationResult<X509> {
+        if let Some(ref ca_certificate_path) = self.ca_certificate_path {
+            let ca_path = PathBuf::from(ca_certificate_path);
+            match fs::read(&ca_path).await {
+                Ok(ca_cert) => {
+                    let cert = X509::from_pem(&ca_cert)
+                        .map_err(|_| ConfigurationError::DirectoryNotFound)?;
+                    Ok(cert)
+                }
+                Err(err) => Err(ConfigurationError::FileSystemError(err)),
+            }
+        } else if let Some(ref ca_certificate) = self.ca_certificate {
+            let ca_cert = X509::from_pem(ca_certificate.as_bytes())
+                .map_err(|_| ConfigurationError::DirectoryNotFound)?;
+            Ok(ca_cert)
+        } else {
+            Err(ConfigurationError::DirectoryNotFound)
+        }
+    }
+
+    pub async fn set_ca_certificate(&mut self, ca_certificate: &str) -> ConfigurationResult<()> {
+        if let Some(ref ca_certificate_path) = &self.ca_certificate_path {
+            let ca_path = PathBuf::from(ca_certificate_path);
+            match fs::write(&ca_path, ca_certificate.as_bytes()).await {
+                Ok(()) => Ok(()),
+                Err(err) => Err(ConfigurationError::FileSystemError(err)),
+            }
+        } else {
+            self.ca_certificate = Some(ca_certificate.to_string());
+            Ok(())
+        }
+    }
+
+    pub async fn get_ca_private_key(&self) -> ConfigurationResult<PKey<Private>> {
+        if let Some(ref ca_private_key_path) = self.ca_private_key_path {
+            let ca_path = PathBuf::from(ca_private_key_path);
+            match fs::read(&ca_path).await {
+                Ok(ca_key) => {
+                    let pkey = PKey::private_key_from_pem(&ca_key)
+                        .map_err(|_| ConfigurationError::DirectoryNotFound)?;
+                    Ok(pkey)
+                }
+                Err(err) => Err(ConfigurationError::FileSystemError(err)),
+            }
+        } else if let Some(ref ca_private_key) = self.ca_private_key {
+            let pkey = PKey::private_key_from_pem(ca_private_key.as_bytes())
+                .map_err(|_| ConfigurationError::DirectoryNotFound)?;
+            Ok(pkey)
+        } else {
+            Err(ConfigurationError::DirectoryNotFound)
+        }
+    }
+
+    pub async fn set_ca_private_key(&mut self, ca_private_key: &str) -> ConfigurationResult<()> {
+        if let Some(ref ca_private_key_path) = &self.ca_private_key_path {
+            let ca_path = PathBuf::from(ca_private_key_path);
+            match fs::write(&ca_path, ca_private_key.as_bytes()).await {
+                Ok(()) => Ok(()),
+                Err(err) => Err(ConfigurationError::FileSystemError(err)),
+            }
+        } else {
+            self.ca_private_key = Some(ca_private_key.to_string());
+            Ok(())
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Configuration {
     pub exclusions: BTreeSet<String>,
     pub custom_filters: Vec<String>,
-    ca: Ca,
+    pub ca: Ca,
     pub network: NetworkConfig,
     pub filters: Vec<Filter>,
 }
@@ -393,6 +499,8 @@ pub enum ConfigurationError {
     FilterError(String),
     #[error("network error: {0}")]
     NetworkError(String),
+    #[error("ca error: {0}")]
+    CaError(String),
 }
 
 impl Configuration {
@@ -558,44 +666,13 @@ impl Configuration {
         Ok(())
     }
 
-    pub async fn ca_certificate(&self) -> ConfigurationResult<X509> {
-        if let Some(ref ca_certificate_path) = self.ca.ca_certificate_path {
-            let ca_path = PathBuf::from(ca_certificate_path);
-            match fs::read(&ca_path).await {
-                Ok(ca_cert) => {
-                    let cert = X509::from_pem(&ca_cert)
-                        .map_err(|_| ConfigurationError::DirectoryNotFound)?;
-                    Ok(cert)
-                }
-                Err(err) => Err(ConfigurationError::FileSystemError(err)),
-            }
-        } else if let Some(ref ca_certificate) = self.ca.ca_certificate {
-            let ca_cert = X509::from_pem(ca_certificate.as_bytes())
-                .map_err(|_| ConfigurationError::DirectoryNotFound)?;
-            Ok(ca_cert)
-        } else {
-            Err(ConfigurationError::DirectoryNotFound)
-        }
-    }
-
-    pub async fn ca_private_key(&self) -> ConfigurationResult<PKey<Private>> {
-        if let Some(ref ca_private_key_path) = self.ca.ca_private_key_path {
-            let ca_path = PathBuf::from(ca_private_key_path);
-            match fs::read(&ca_path).await {
-                Ok(ca_key) => {
-                    let pkey = PKey::private_key_from_pem(&ca_key)
-                        .map_err(|_| ConfigurationError::DirectoryNotFound)?;
-                    Ok(pkey)
-                }
-                Err(err) => Err(ConfigurationError::FileSystemError(err)),
-            }
-        } else if let Some(ref ca_private_key) = self.ca.ca_private_key {
-            let pkey = PKey::private_key_from_pem(ca_private_key.as_bytes())
-                .map_err(|_| ConfigurationError::DirectoryNotFound)?;
-            Ok(pkey)
-        } else {
-            Err(ConfigurationError::DirectoryNotFound)
-        }
+    pub async fn set_ca_settings(&mut self, ca_config: &Ca) -> ConfigurationResult<()> {
+        if let Err(err) = ca_config.validate().await {
+            log::error!("Failed to validate ca settings: {err}");
+            return Err(err);
+        };
+        self.ca = ca_config.clone();
+        Ok(())
     }
 
     async fn new_default() -> ConfigurationResult<Self> {

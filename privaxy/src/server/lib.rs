@@ -77,7 +77,7 @@ pub async fn start_privaxy() -> PrivaxyServer {
         LocalExclusionStore::new(Vec::from_iter(configuration.exclusions.clone().into_iter()));
     let local_exclusion_store_clone = local_exclusion_store.clone();
 
-    let ca_certificate = match configuration.ca_certificate().await {
+    let ca_certificate = match configuration.ca.get_ca_certificate().await {
         Ok(ca_certificate) => ca_certificate,
         Err(err) => {
             println!("Unable to decode ca certificate: {:?}", err);
@@ -89,7 +89,7 @@ pub async fn start_privaxy() -> PrivaxyServer {
         .unwrap()
         .to_string();
 
-    let ca_private_key = match configuration.ca_private_key().await {
+    let ca_private_key = match configuration.ca.get_ca_private_key().await {
         Ok(ca_private_key) => ca_private_key,
         Err(err) => {
             println!("Unable to decode ca private key: {:?}", err);
