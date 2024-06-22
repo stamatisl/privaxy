@@ -28,6 +28,11 @@ pub struct NetworkConfig {
     pub tls: bool,
 }
 
+struct CaConfig {
+    private_key_pem: String,
+    ca_cert_pem: String,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 struct NetworkSettings {
     current_config: NetworkConfig,
@@ -148,9 +153,7 @@ impl Component for GeneralSettings {
                             network_settings.current_config.proxy_port = p;
                             None
                         }
-                        _ => Some(
-                            "Invalid proxy port. Must be a number between 1 and 65535.".to_string(),
-                        ),
+                        _ => Some("Invalid proxy port".to_string()),
                     };
                 }
             }
@@ -162,7 +165,7 @@ impl Component for GeneralSettings {
                         network_settings.current_config.bind_addr = value.clone();
                         None
                     } else {
-                        Some("Invalid bind address. Must be a valid IP address.".to_string())
+                        Some("Invalid IP address".to_string())
                     };
                 }
             }
@@ -174,9 +177,7 @@ impl Component for GeneralSettings {
                             network_settings.current_config.web_port = p;
                             None
                         }
-                        _ => Some(
-                            "Invalid web port. Must be a number between 1 and 65535.".to_string(),
-                        ),
+                        _ => Some("Invalid web port".to_string()),
                     };
                 }
             }
@@ -244,7 +245,7 @@ impl Component for GeneralSettings {
                                             Message::UpdateBindAddr(input.value())
                                         }),
                                         network_settings.bind_addr_error.as_ref(),
-                                        "Enter the IP address the proxy should bind to."
+                                        "The IP address the proxy will bind to."
                                     ) }
                                     { render_setting(
                                         "Proxy port",
@@ -254,7 +255,7 @@ impl Component for GeneralSettings {
                                             Message::UpdateProxyPort(input.value())
                                         }),
                                         network_settings.proxy_port_error.as_ref(),
-                                        "Enter the port number for the proxy server (1-65535)."
+                                        "The port number the proxy server will listen on"
                                     ) }
                                     { render_setting(
                                         "Web port",
@@ -264,7 +265,7 @@ impl Component for GeneralSettings {
                                             Message::UpdateWebPort(input.value())
                                         }),
                                         network_settings.web_port_error.as_ref(),
-                                        "Enter the port number for the web server (1-65535)."
+                                        "The port number the web server will listen on"
                                     ) }
                                     { render_boolean_setting("TLS", network_settings.current_config.tls, "If the web server uses HTTPS") }
                                     </>
