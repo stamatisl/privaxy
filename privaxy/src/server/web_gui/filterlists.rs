@@ -15,9 +15,9 @@ async fn get_filters() -> Result<Box<dyn warp::Reply>, Infallible> {
     }
 }
 
-async fn get_filter(id: u64) -> Result<Box<dyn warp::Reply>, Infallible> {
+async fn get_filter(id: u32) -> Result<Box<dyn warp::Reply>, Infallible> {
     log::debug!("Getting filter {id}");
-    match filterlists_api::get_filter_information(filterlists_api::FilterArgs::U64(id)).await {
+    match filterlists_api::get_filter_information(filterlists_api::FilterArgs::U32(id)).await {
         Ok(filter) => Ok(Box::new(warp::reply::json(&filter))),
         Err(err) => {
             log::error!("Failed to get filter: {err}");
@@ -62,7 +62,7 @@ pub(super) fn create_routes() -> BoxedFilter<(impl warp::Reply,)> {
     warp::path("list")
         .and(warp::get())
         .and_then(self::get_filters)
-        .or(warp::path!("list" / u64)
+        .or(warp::path!("list" / u32)
             .and(warp::get())
             .and_then(self::get_filter))
         .or(warp::path("syntaxes")

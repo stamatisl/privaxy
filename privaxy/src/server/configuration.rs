@@ -8,6 +8,7 @@ use openssl::{
     pkey::{PKey, Private},
     x509::X509,
 };
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use sha2::{Digest, Sha256};
@@ -18,12 +19,14 @@ use thiserror::Error;
 use tokio::sync::{self, mpsc::Sender};
 use tokio::{fs, sync::mpsc::Receiver};
 use url::Url;
-
+/// Default configuration directory name.
 const CONFIGURATION_DIRECTORY_NAME: &str = ".privaxy";
+/// Default configuration file name.
 const CONFIGURATION_FILE_NAME: &str = "config";
+/// Default filters directory name.
 const FILTERS_DIRECTORY_NAME: &str = "filters";
 
-// Update filters every 10 minutes.
+/// Update filters every 10 minutes.
 const FILTERS_UPDATE_AFTER: Duration = Duration::from_secs(60 * 10);
 
 type ConfigurationResult<T> = Result<T, ConfigurationError>;
@@ -65,20 +68,77 @@ pub struct DefaultFilter {
 #[serde_as]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Filter {
+    /// If the filter is enabled
     pub enabled: bool,
+    /// Title of the filter
     pub title: String,
+    /// Group of the filter
     pub group: FilterGroup,
+    /// Local file name of the filter
     pub file_name: String,
     #[serde_as(as = "DisplayFromStr")]
+    /// Remote URL of the filter
     pub url: Url,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+/// Network configuration for Privaxy
 pub struct NetworkConfig {
+    /// Bind address for the proxy server.
     pub bind_addr: String,
+    /// Port for the proxy server.
     pub proxy_port: u16,
+    /// Port for the web server.
     pub web_port: u16,
-    pub api_port: u16,
+    /// Enable TLS for the web server.
+    pub tls: bool,
+}
+
+#[derive(Error, Debug)]
+pub enum NetworkConfigError {
+    #[error("bind address error: {0}")]
+    BindAddressError(String),
+    #[error("proxy port error: {0}")]
+    ProxyPortError(String),
+    #[error("web port error: {0}")]
+    WebPortError(String),
+    #[error("port collision: {0}")]
+    PortCollisionError(String),
+}
+
+impl NetworkConfig {
+    pub(crate) fn validate(&self) -> ConfigurationResult<()> {
+        if self.proxy_port == 0 {
+            return Err(
+                NetworkConfigError::ProxyPortError("Proxy port cannot be 0".to_string()).into(),
+            );
+        };
+        if self.web_port == 0 {
+            return Err(
+                NetworkConfigError::WebPortError("Web port cannot be 0".to_string()).into(),
+            );
+        };
+        if self.proxy_port == self.web_port {
+            return Err(NetworkConfigError::PortCollisionError(
+                "Proxy and web ports cannot be the same".to_string(),
+            )
+            .into());
+        };
+        if self.bind_addr.is_empty() {
+            return Err(NetworkConfigError::BindAddressError(
+                "Bind address cannot be empty".to_string(),
+            )
+            .into());
+        };
+        let addr_regex = Regex::new(r"^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$");
+        if !addr_regex.unwrap().is_match(&self.bind_addr) {
+            return Err(NetworkConfigError::BindAddressError(
+                format!("Invalid bind address: {}", self.bind_addr).to_string(),
+            )
+            .into());
+        };
+        Ok(())
+    }
 }
 
 pub struct DefaultFilters(Vec<DefaultFilter>);
@@ -105,7 +165,7 @@ impl DefaultFilters {
     ) -> Option<DefaultFilter> {
         match Url::parse(url) {
             Ok(parsed_url) => {
-                let file_name = calculate_sha256_hex(url);
+                let file_name = calc_filter_filename(url);
                 Some(DefaultFilter {
                     enabled_by_default,
                     file_name,
@@ -249,10 +309,14 @@ impl DefaultFilters {
     }
 }
 
-pub(crate) fn calculate_sha256_hex(input: &str) -> String {
+fn calculate_sha256_hex(input: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(input);
     hex::encode(hasher.finalize())
+}
+
+pub(crate) fn calc_filter_filename(filename: &str) -> String {
+    format!("{}.txt", calculate_sha256_hex(filename))
 }
 
 impl Filter {
@@ -310,23 +374,146 @@ impl From<DefaultFilter> for Filter {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Ca {
+    #[serde(default)]
     ca_certificate: Option<String>,
+    #[serde(default)]
     ca_private_key: Option<String>,
+    #[serde(default)]
     ca_certificate_path: Option<String>,
+    #[serde(default)]
     ca_private_key_path: Option<String>,
+}
+
+#[derive(Error, Debug)]
+pub enum CaError {
+    #[error("failed to read CA certificate: {0}")]
+    CaCertificateNotFound(String),
+    #[error("failed to read CA private key: {0}")]
+    CaPrivateKeyNotFound(String),
+    #[error("issue with private key: {0}")]
+    CaPrivateKeyError(String),
+    #[error("private key does not match the certificate")]
+    PrivateKeyMismatch,
+}
+
+impl Ca {
+    pub(crate) async fn validate(&self) -> Result<(), ConfigurationError> {
+        let ca_cert = match self.get_ca_certificate().await {
+            Ok(cert) => cert,
+            Err(err) => {
+                return Err(CaError::CaCertificateNotFound(format!(
+                    "Failed to read CA certificate: {err}"
+                ))
+                .into())
+            }
+        };
+        let ca_pkey = match self.get_ca_private_key().await {
+            Ok(pkey) => pkey,
+            Err(err) => {
+                return Err(CaError::CaPrivateKeyNotFound(format!(
+                    "Failed to read CA private key: {err}"
+                ))
+                .into())
+            }
+        };
+        let ca_pub_key = match ca_cert.public_key() {
+            Ok(key) => key,
+            Err(err) => {
+                return Err(CaError::CaPrivateKeyError(format!(
+                    "Failed to convert CA private key to PEM: {err}"
+                ))
+                .into())
+            }
+        };
+        if ca_pkey.public_eq(&ca_pub_key) {
+            Ok(())
+        } else {
+            Err(CaError::PrivateKeyMismatch.into())
+        }
+    }
+
+    pub async fn get_ca_certificate(&self) -> ConfigurationResult<X509> {
+        if let Some(ref ca_certificate_path) = self.ca_certificate_path {
+            let ca_path = PathBuf::from(ca_certificate_path);
+            match fs::read(&ca_path).await {
+                Ok(ca_cert) => {
+                    let cert = X509::from_pem(&ca_cert)
+                        .map_err(|_| ConfigurationError::DirectoryNotFound)?;
+                    Ok(cert)
+                }
+                Err(err) => Err(ConfigurationError::FileSystemError(err)),
+            }
+        } else if let Some(ref ca_certificate) = self.ca_certificate {
+            let ca_cert = X509::from_pem(ca_certificate.as_bytes())
+                .map_err(|_| ConfigurationError::DirectoryNotFound)?;
+            Ok(ca_cert)
+        } else {
+            Err(ConfigurationError::DirectoryNotFound)
+        }
+    }
+
+    pub async fn set_ca_certificate(&mut self, ca_certificate: &str) -> ConfigurationResult<()> {
+        if let Some(ref ca_certificate_path) = &self.ca_certificate_path {
+            let ca_path = PathBuf::from(ca_certificate_path);
+            match fs::write(&ca_path, ca_certificate.as_bytes()).await {
+                Ok(()) => Ok(()),
+                Err(err) => Err(ConfigurationError::FileSystemError(err)),
+            }
+        } else {
+            self.ca_certificate = Some(ca_certificate.to_string());
+            Ok(())
+        }
+    }
+
+    pub async fn get_ca_private_key(&self) -> ConfigurationResult<PKey<Private>> {
+        if let Some(ref ca_private_key_path) = self.ca_private_key_path {
+            let ca_path = PathBuf::from(ca_private_key_path);
+            match fs::read(&ca_path).await {
+                Ok(ca_key) => {
+                    let pkey = PKey::private_key_from_pem(&ca_key)
+                        .map_err(|_| ConfigurationError::DirectoryNotFound)?;
+                    Ok(pkey)
+                }
+                Err(err) => Err(ConfigurationError::FileSystemError(err)),
+            }
+        } else if let Some(ref ca_private_key) = self.ca_private_key {
+            let pkey = PKey::private_key_from_pem(ca_private_key.as_bytes())
+                .map_err(|_| ConfigurationError::DirectoryNotFound)?;
+            Ok(pkey)
+        } else {
+            Err(ConfigurationError::DirectoryNotFound)
+        }
+    }
+
+    pub async fn set_ca_private_key(&mut self, ca_private_key: &str) -> ConfigurationResult<()> {
+        if let Some(ref ca_private_key_path) = &self.ca_private_key_path {
+            let ca_path = PathBuf::from(ca_private_key_path);
+            match fs::write(&ca_path, ca_private_key.as_bytes()).await {
+                Ok(()) => Ok(()),
+                Err(err) => Err(ConfigurationError::FileSystemError(err)),
+            }
+        } else {
+            self.ca_private_key = Some(ca_private_key.to_string());
+            Ok(())
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Configuration {
     pub exclusions: BTreeSet<String>,
     pub custom_filters: Vec<String>,
-    ca: Ca,
+    pub ca: Ca,
     pub network: NetworkConfig,
     pub filters: Vec<Filter>,
 }
 
 #[derive(Error, Debug)]
 pub enum ConfigurationError {
+    #[error("NetworkConfigError error: {0}")]
+    NetworkConfigError(#[from] NetworkConfigError),
+    #[error("CaError error: {0}")]
+    CaError(#[from] CaError),
     #[error("an error occured while trying to deserialize configuration file")]
     DeserializeError(#[from] toml::de::Error),
     #[error("this directory was not found")]
@@ -341,6 +528,14 @@ pub enum ConfigurationError {
     UnableToDecodePem(#[from] openssl::error::ErrorStack),
     #[error("filter error: {0}")]
     FilterError(String),
+    #[error("network error: {0}")]
+    NetworkError(String),
+}
+
+#[derive(Error, Debug)]
+pub enum PrivaxyError {
+    #[error("ConfigurationError: {0}")]
+    ConfigurationError(#[from] ConfigurationError),
 }
 
 impl Configuration {
@@ -494,44 +689,25 @@ impl Configuration {
         }
     }
 
-    pub async fn ca_certificate(&self) -> ConfigurationResult<X509> {
-        if let Some(ref ca_certificate_path) = self.ca.ca_certificate_path {
-            let ca_path = PathBuf::from(ca_certificate_path);
-            match fs::read(&ca_path).await {
-                Ok(ca_cert) => {
-                    let cert = X509::from_pem(&ca_cert)
-                        .map_err(|_| ConfigurationError::DirectoryNotFound)?;
-                    Ok(cert)
-                }
-                Err(err) => Err(ConfigurationError::FileSystemError(err)),
-            }
-        } else if let Some(ref ca_certificate) = self.ca.ca_certificate {
-            let ca_cert = X509::from_pem(ca_certificate.as_bytes())
-                .map_err(|_| ConfigurationError::DirectoryNotFound)?;
-            Ok(ca_cert)
-        } else {
-            Err(ConfigurationError::DirectoryNotFound)
-        }
+    pub async fn set_network_settings(
+        &mut self,
+        network_config: &NetworkConfig,
+    ) -> ConfigurationResult<()> {
+        if let Err(err) = network_config.validate() {
+            log::error!("Failed to validate network settings: {err}");
+            return Err(err);
+        };
+        self.network = network_config.clone();
+        Ok(())
     }
 
-    pub async fn ca_private_key(&self) -> ConfigurationResult<PKey<Private>> {
-        if let Some(ref ca_private_key_path) = self.ca.ca_private_key_path {
-            let ca_path = PathBuf::from(ca_private_key_path);
-            match fs::read(&ca_path).await {
-                Ok(ca_key) => {
-                    let pkey = PKey::private_key_from_pem(&ca_key)
-                        .map_err(|_| ConfigurationError::DirectoryNotFound)?;
-                    Ok(pkey)
-                }
-                Err(err) => Err(ConfigurationError::FileSystemError(err)),
-            }
-        } else if let Some(ref ca_private_key) = self.ca.ca_private_key {
-            let pkey = PKey::private_key_from_pem(ca_private_key.as_bytes())
-                .map_err(|_| ConfigurationError::DirectoryNotFound)?;
-            Ok(pkey)
-        } else {
-            Err(ConfigurationError::DirectoryNotFound)
-        }
+    pub async fn set_ca_settings(&mut self, ca_config: &Ca) -> ConfigurationResult<()> {
+        if let Err(err) = ca_config.validate().await {
+            log::error!("Failed to validate ca settings: {err}");
+            return Err(err);
+        };
+        self.ca = ca_config.clone();
+        Ok(())
     }
 
     async fn new_default() -> ConfigurationResult<Self> {
@@ -560,9 +736,9 @@ impl Configuration {
             },
             network: NetworkConfig {
                 bind_addr: "127.0.0.1".to_string(),
-                api_port: 8200,
                 proxy_port: 8100,
-                web_port: 8000,
+                web_port: 8200,
+                tls: false,
             },
             exclusions: BTreeSet::new(),
             custom_filters: Vec::new(),

@@ -63,6 +63,14 @@ body.modal-open {
   height: 5vh;
 }
 
+.w-200 {
+  width: 200px;
+}
+
+.ml-200 {
+  margin-left: 200px;
+}
+
 
 
 @keyframes pulse-ring {

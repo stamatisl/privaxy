@@ -77,7 +77,7 @@ pub async fn start_privaxy() -> PrivaxyServer {
         LocalExclusionStore::new(Vec::from_iter(configuration.exclusions.clone().into_iter()));
     let local_exclusion_store_clone = local_exclusion_store.clone();
 
-    let ca_certificate = match configuration.ca_certificate().await {
+    let ca_certificate = match configuration.ca.get_ca_certificate().await {
         Ok(ca_certificate) => ca_certificate,
         Err(err) => {
             println!("Unable to decode ca certificate: {:?}", err);
@@ -89,7 +89,7 @@ pub async fn start_privaxy() -> PrivaxyServer {
         .unwrap()
         .to_string();
 
-    let ca_private_key = match configuration.ca_private_key().await {
+    let ca_private_key = match configuration.ca.get_ca_private_key().await {
         Ok(ca_private_key) => ca_private_key,
         Err(err) => {
             println!("Unable to decode ca private key: {:?}", err);
@@ -141,14 +141,13 @@ pub async fn start_privaxy() -> PrivaxyServer {
             parse_ip_address(&network_config.bind_addr.clone())
         }
     };
-    let web_api_server_addr = SocketAddr::from((ip, network_config.api_port));
+    let web_api_server_addr = SocketAddr::from((ip, network_config.web_port));
 
     web_gui::start_frontend(
         broadcast_tx.clone(),
         statistics.clone(),
         blocking_disabled_store.clone(),
         configuration_updater_tx.clone(),
-        ca_certificate_pem.clone(),
         configuration_save_lock.clone(),
         local_exclusion_store.clone(),
         web_api_server_addr,

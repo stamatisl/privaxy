@@ -1,4 +1,5 @@
 use crate::filters::Filters;
+use crate::general::GeneralSettings;
 use crate::set_title;
 use crate::settings_textarea::SettingsTextarea;
 use yew::prelude::*;
@@ -7,6 +8,8 @@ use yew_router::prelude::*;
 
 #[derive(Clone, Copy, Routable, PartialEq)]
 pub enum SettingsRoute {
+    #[at("/settings/general")]
+    General,
     #[at("/settings/filters")]
     Filters,
     #[at("/settings/exclusions")]
@@ -46,6 +49,11 @@ pub fn switch_settings(route: &SettingsRoute) -> Html {
     }
 
     let content = match route {
+        SettingsRoute::General => {
+            set_title("Settings - General");
+
+            html! { <GeneralSettings /> }
+        }
         SettingsRoute::Filters => {
             set_title("Settings - Filters");
 
@@ -89,6 +97,7 @@ pub fn switch_settings(route: &SettingsRoute) -> Html {
         <Link<SettingsRoute> classes={get_classes(*route, SettingsRoute::Filters)} to={SettingsRoute::Filters}> <span class="truncate">{ "Filters" }</span></Link<SettingsRoute>>
         <Link<SettingsRoute> classes={get_classes(*route, SettingsRoute::Exclusions)} to={SettingsRoute::Exclusions}> <span class="truncate">{ "Exclusions" }</span></Link<SettingsRoute>>
         <Link<SettingsRoute> classes={get_classes(*route, SettingsRoute::CustomFilters)} to={SettingsRoute::CustomFilters}> <span class="truncate">{ "Custom filters" }</span></Link<SettingsRoute>>
+        <Link<SettingsRoute> classes={get_classes(*route, SettingsRoute::General)} to={SettingsRoute::General}> <span class="truncate">{ "General" }</span></Link<SettingsRoute>>
     </nav>
         <div class="container mx-auto px-4 sm:px-6 lg:px-8 mt-4 sm:col-span-6">{ content }</div>
     </div>

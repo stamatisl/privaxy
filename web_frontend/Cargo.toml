@@ -25,3 +25,4 @@ url = "2.5.0"
 readonly = "0.2.12"
 thiserror = "1.0.61"
 filterlists-api = { path = "../filterlists-api" }
+regex = "1.10.5"
