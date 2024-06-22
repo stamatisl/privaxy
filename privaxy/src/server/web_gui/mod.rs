@@ -164,13 +164,13 @@ fn create_api_routes(
         .boxed()
 }
 
-fn with_local_exclusions_store(
+pub(crate) fn with_local_exclusions_store(
     local_exclusions_store: LocalExclusionStore,
 ) -> impl Filter<Extract = (LocalExclusionStore,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || local_exclusions_store.clone())
 }
 
-pub(self) fn with_configuration_save_lock(
+pub(crate) fn with_configuration_save_lock(
     configuration_save_lock: Arc<tokio::sync::Mutex<()>>,
 ) -> impl Filter<Extract = (Arc<tokio::sync::Mutex<()>>,), Error = std::convert::Infallible> + Clone
 {
