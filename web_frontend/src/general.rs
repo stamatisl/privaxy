@@ -1,15 +1,20 @@
 use crate::save_button;
+use gloo_utils::format::JsValueSerdeExt;
 use regex::Regex;
 use reqwasm::http::Request;
 use serde::{Deserialize, Serialize};
-use wasm_bindgen_futures::spawn_local;
-use yew::prelude::*;
-use yew::{html, Callback, Component, Context, Html};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen_futures::spawn_local;
 use web_sys::{File, FileReader};
-use openssl::pkey::PKey;
-use openssl::x509::X509;
+use yew::prelude::*;
+use yew::{html, Callback, Component, Context, Html};
+
+#[wasm_bindgen(module = "/static/validate_cert.js")]
+extern "C" {
+    #[wasm_bindgen(catch)]
+    async fn validateCertificate(cert_pem: &str, key_pem: &str) -> Result<JsValue, JsValue>;
+}
 
 pub enum Message {
     Load,
@@ -22,6 +27,8 @@ pub enum Message {
     UpdateCaKey(String),
     UploadCaCert(web_sys::File),
     UploadCaKey(web_sys::File),
+    ValidateCertificates,
+    ValidationFailed(String),
     UpdateTls(bool),
 }
 enum SettingType {
@@ -46,6 +53,14 @@ pub struct NetworkConfig {
 struct CaConfig {
     private_key_pem: String,
     ca_cert_pem: String,
+    ca_cert_error: Option<String>,
+    private_key_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+struct ExternCaCertificateValidation {
+    valid: bool,
+    error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -99,6 +114,8 @@ impl GeneralSettings {
             ca_config: CaConfig {
                 private_key_pem: String::new(),
                 ca_cert_pem: String::new(),
+                ca_cert_error: None,
+                private_key_error: None,
             },
             loading: true,
             save_callback: Callback::noop(),
@@ -117,6 +134,8 @@ impl Component for GeneralSettings {
             ca_config: CaConfig {
                 private_key_pem: String::new(),
                 ca_cert_pem: String::new(),
+                ca_cert_error: None,
+                private_key_error: None,
             },
             network_settings: None,
             loading: true,
@@ -212,28 +231,62 @@ impl Component for GeneralSettings {
                 }
             }
             Message::UpdateCaCert(value) => {
-                    self.ca_config.ca_cert_pem = value;
+                let link = ctx.link().clone();
+                link.send_message(Message::ValidateCertificates);
+                self.ca_config.ca_cert_pem = value;
             }
             Message::UpdateCaKey(value) => {
-                    self.ca_config.private_key_pem = value;
+                let link = ctx.link().clone();
+                link.send_message(Message::ValidateCertificates);
+                self.ca_config.private_key_pem = value;
             }
             Message::UploadCaCert(file) => {
                 let link = ctx.link().clone();
-                read_file(file, Callback::from(move |result: Result<String, String>| {
-                    match result {
+                read_file(
+                    file,
+                    Callback::from(move |result: Result<String, String>| match result {
                         Ok(text) => link.send_message(Message::UpdateCaCert(text)),
                         Err(e) => log::error!("Failed to read CA cert file: {}", e),
-                    }
-                }));
+                    }),
+                );
             }
             Message::UploadCaKey(file) => {
                 let link = ctx.link().clone();
-                read_file(file, Callback::from(move |result: Result<String, String>| {
-                    match result {
+                read_file(
+                    file,
+                    Callback::from(move |result: Result<String, String>| match result {
                         Ok(text) => link.send_message(Message::UpdateCaKey(text)),
                         Err(e) => log::error!("Failed to read CA key file: {}", e),
+                    }),
+                );
+            }
+            Message::ValidateCertificates => {
+                let cert_pem = self.ca_config.ca_cert_pem.clone();
+                let key_pem = self.ca_config.private_key_pem.clone();
+                let link = ctx.link().clone();
+                spawn_local(async move {
+                    match validateCertificate(&cert_pem, &key_pem).await {
+                        Ok(result) => {
+                            let result =
+                                JsValueSerdeExt::into_serde::<ExternCaCertificateValidation>(
+                                    &result,
+                                )
+                                .unwrap();
+                            if !result.valid {
+                                link.send_message(Message::ValidationFailed(result.error.unwrap()));
+                            }
+                        }
+                        Err(err) => {
+                            log::error!("Failed to validate certificates: {:?}", err);
+                            link.send_message(Message::ValidationFailed(format!("{:?}", err)));
+                        }
                     }
-                }));
+                });
+            }
+            Message::ValidationFailed(err) => {
+                log::error!("{}", err);
+                self.ca_config.private_key_error = Some(err.clone());
+                self.ca_config.ca_cert_error = Some(err);
             }
         }
         true
@@ -336,6 +389,7 @@ impl Component for GeneralSettings {
                                             Message::UpdateCaCert(input.value())
                                         }),
                                         ctx.link().callback(Message::UploadCaCert),
+                                        ca_config.ca_cert_error.as_ref(),
                                         "Paste or upload the CA Certificate"
                                     ) }
                                     { render_certificate_setting(
@@ -346,12 +400,13 @@ impl Component for GeneralSettings {
                                             Message::UpdateCaKey(input.value())
                                         }),
                                         ctx.link().callback(Message::UploadCaKey),
+                                        ca_config.private_key_error.as_ref(),
                                         "Paste or upload the CA Certificate Key"
                                     ) }
                                     </>
                                 }
                             }
-                            
+
                             SettingCategories::Other => html! {<></>},
                         }}
                     </div>
@@ -393,6 +448,7 @@ fn render_certificate_setting(
     value: String,
     oninput: Callback<InputEvent>,
     onupload: Callback<web_sys::File>,
+    error: Option<&String>,
     description: &str,
 ) -> Html {
     html! {
@@ -418,13 +474,16 @@ fn render_certificate_setting(
                     })}
                 />
                 <p class="text-gray-400 text-sm mt-1">{description}</p>
+                if let Some(error_msg) = error {
+                    <p class="text-red-500 text-xs italic">{error_msg}</p>
+                }
             </div>
         </div>
     }
 }
 
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 fn read_file(file: File, callback: Callback<Result<String, String>>) {
     let file_reader = FileReader::new().unwrap();
@@ -440,10 +499,14 @@ fn read_file(file: File, callback: Callback<Result<String, String>>) {
                     if let Some(text) = result.as_string() {
                         callback.borrow().emit(Ok(text));
                     } else {
-                        callback.borrow().emit(Err("Failed to convert result to string".to_string()));
+                        callback
+                            .borrow()
+                            .emit(Err("Failed to convert result to string".to_string()));
                     }
                 }
-                Err(_) => callback.borrow().emit(Err("Failed to get result from FileReader".to_string())),
+                Err(_) => callback
+                    .borrow()
+                    .emit(Err("Failed to get result from FileReader".to_string())),
             }
         }) as Box<dyn FnMut(_)>)
     };
@@ -451,14 +514,18 @@ fn read_file(file: File, callback: Callback<Result<String, String>>) {
     let onerror = {
         let callback = callback.clone();
         Closure::wrap(Box::new(move |_error: web_sys::Event| {
-            callback.borrow().emit(Err("Error reading file".to_string()));
+            callback
+                .borrow()
+                .emit(Err("Error reading file".to_string()));
         }) as Box<dyn FnMut(_)>)
     };
 
     file_reader.set_onload(Some(onload.as_ref().unchecked_ref()));
     file_reader.set_onerror(Some(onerror.as_ref().unchecked_ref()));
 
-    file_reader.read_as_text(&file).expect("Could not read file");
+    file_reader
+        .read_as_text(&file)
+        .expect("Could not read file");
 
     onload.forget();
     onerror.forget();

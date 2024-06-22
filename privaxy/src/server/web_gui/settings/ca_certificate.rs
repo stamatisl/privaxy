@@ -1,15 +1,15 @@
 use super::get_error_response;
-use warp::http::Response;
-use warp::Filter as RouteFilter;
+use crate::configuration::Ca;
 use crate::configuration::Configuration;
+use crate::web_gui::with_configuration_save_lock;
+use crate::web_gui::with_configuration_updater_sender;
+use crate::web_gui::ApiError;
 use std::convert::Infallible;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use warp::filters::BoxedFilter;
-use crate::configuration::Ca;
-use crate::web_gui::ApiError;
-use crate::web_gui::with_configuration_updater_sender;
-use crate::web_gui::with_configuration_save_lock;
+use warp::http::Response;
+use warp::Filter as RouteFilter;
 
 async fn get_ca_certificates() -> Result<Box<dyn warp::Reply>, Infallible> {
     log::debug!("Getting CA certificates");
@@ -41,15 +41,23 @@ async fn get_ca_certificates() -> Result<Box<dyn warp::Reply>, Infallible> {
 
 async fn validate_ca_certificates(body: Ca) -> Result<Box<dyn warp::Reply>, Infallible> {
     match body.validate().await {
-        Ok(_) => Ok(Box::new(Response::builder().status(http::StatusCode::NO_CONTENT).body(""))),
+        Ok(_) => Ok(Box::new(
+            Response::builder()
+                .status(http::StatusCode::NO_CONTENT)
+                .body(""),
+        )),
         Err(err) => {
             log::error!("Invalid CA certificates: {err}");
-            return Ok(Box::new(Response::builder().status(http::StatusCode::BAD_REQUEST).body(
-                serde_json::to_string(&ApiError {
-                    error: err.to_string(),
-                })
-                .unwrap(),
-            )));
+            return Ok(Box::new(
+                Response::builder()
+                    .status(http::StatusCode::BAD_REQUEST)
+                    .body(
+                        serde_json::to_string(&ApiError {
+                            error: err.to_string(),
+                        })
+                        .unwrap(),
+                    ),
+            ));
         }
     }
 }
@@ -90,7 +98,8 @@ pub(super) fn create_routes(
     configuration_updater_sender: Sender<Configuration>,
     configuration_save_lock: Arc<tokio::sync::Mutex<()>>,
 ) -> BoxedFilter<(impl warp::Reply,)> {
-        warp::path::end().and(
+    warp::path::end()
+        .and(
             warp::get()
                 .and_then(self::get_ca_certificates)
                 .or(warp::put()
@@ -98,16 +107,16 @@ pub(super) fn create_routes(
                     .and(with_configuration_updater_sender(
                         configuration_updater_sender.clone(),
                     ))
-                    .and(with_configuration_save_lock(configuration_save_lock.clone()))
+                    .and(with_configuration_save_lock(
+                        configuration_save_lock.clone(),
+                    ))
                     .and_then(self::put_ca_certificates)),
         )
-        .or(
-            warp::path("validate").and(
-                warp::path::end()
-                    .and(warp::post())
-                    .and(warp::body::json())
-                    .and_then(self::validate_ca_certificates),
-            )
-        )
+        .or(warp::path("validate").and(
+            warp::path::end()
+                .and(warp::post())
+                .and(warp::body::json())
+                .and_then(self::validate_ca_certificates),
+        ))
         .boxed()
 }

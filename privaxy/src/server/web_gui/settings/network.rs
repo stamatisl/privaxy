@@ -1,13 +1,13 @@
 use super::get_error_response;
-use warp::http::Response;
-use warp::Filter as RouteFilter;
+use crate::configuration::NetworkConfig;
+use crate::web_gui::with_configuration_save_lock;
+use crate::web_gui::with_configuration_updater_sender;
 use std::convert::Infallible;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use warp::filters::BoxedFilter;
-use crate::configuration::NetworkConfig;
-use crate::web_gui::with_configuration_updater_sender;
-use crate::web_gui::with_configuration_save_lock;
+use warp::http::Response;
+use warp::Filter as RouteFilter;
 
 use crate::configuration::Configuration;
 
@@ -56,14 +56,14 @@ pub(super) fn create_routes(
     configuration_updater_sender: Sender<Configuration>,
     configuration_save_lock: Arc<tokio::sync::Mutex<()>>,
 ) -> BoxedFilter<(impl warp::Reply,)> {
-            warp::path::end()
-                .and(warp::get().and_then(self::get_network_settings))
-                .or(warp::put()
-                    .and(warp::body::json())
-                    .and(with_configuration_updater_sender(
-                        configuration_updater_sender,
-                    ))
-                    .and(with_configuration_save_lock(configuration_save_lock))
-                    .and_then(self::put_network_settings))
+    warp::path::end()
+        .and(warp::get().and_then(self::get_network_settings))
+        .or(warp::put()
+            .and(warp::body::json())
+            .and(with_configuration_updater_sender(
+                configuration_updater_sender,
+            ))
+            .and(with_configuration_save_lock(configuration_save_lock))
+            .and_then(self::put_network_settings))
         .boxed()
 }

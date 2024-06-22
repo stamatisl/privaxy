@@ -19,7 +19,6 @@ use thiserror::Error;
 use tokio::sync::{self, mpsc::Sender};
 use tokio::{fs, sync::mpsc::Receiver};
 use url::Url;
-
 /// Default configuration directory name.
 const CONFIGURATION_DIRECTORY_NAME: &str = ".privaxy";
 /// Default configuration file name.
@@ -95,33 +94,48 @@ pub struct NetworkConfig {
     pub tls: bool,
 }
 
+#[derive(Error, Debug)]
+pub enum NetworkConfigError {
+    #[error("bind address error: {0}")]
+    BindAddressError(String),
+    #[error("proxy port error: {0}")]
+    ProxyPortError(String),
+    #[error("web port error: {0}")]
+    WebPortError(String),
+    #[error("port collision: {0}")]
+    PortCollisionError(String),
+}
+
 impl NetworkConfig {
     pub(crate) fn validate(&self) -> ConfigurationResult<()> {
         if self.proxy_port == 0 {
-            return Err(ConfigurationError::NetworkError(
-                "Proxy port cannot be 0".to_string(),
-            ));
+            return Err(
+                NetworkConfigError::ProxyPortError("Proxy port cannot be 0".to_string()).into(),
+            );
         };
         if self.web_port == 0 {
-            return Err(ConfigurationError::NetworkError(
-                "Web port cannot be 0".to_string(),
-            ));
+            return Err(
+                NetworkConfigError::WebPortError("Web port cannot be 0".to_string()).into(),
+            );
         };
         if self.proxy_port == self.web_port {
-            return Err(ConfigurationError::NetworkError(
+            return Err(NetworkConfigError::PortCollisionError(
                 "Proxy and web ports cannot be the same".to_string(),
-            ));
+            )
+            .into());
         };
         if self.bind_addr.is_empty() {
-            return Err(ConfigurationError::NetworkError(
+            return Err(NetworkConfigError::BindAddressError(
                 "Bind address cannot be empty".to_string(),
-            ));
+            )
+            .into());
         };
         let addr_regex = Regex::new(r"^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$");
         if !addr_regex.unwrap().is_match(&self.bind_addr) {
-            return Err(ConfigurationError::NetworkError(
+            return Err(NetworkConfigError::BindAddressError(
                 format!("Invalid bind address: {}", self.bind_addr).to_string(),
-            ));
+            )
+            .into());
         };
         Ok(())
     }
@@ -370,38 +384,51 @@ pub struct Ca {
     ca_private_key_path: Option<String>,
 }
 
+#[derive(Error, Debug)]
+pub enum CaError {
+    #[error("failed to read CA certificate: {0}")]
+    CaCertificateNotFound(String),
+    #[error("failed to read CA private key: {0}")]
+    CaPrivateKeyNotFound(String),
+    #[error("issue with private key: {0}")]
+    CaPrivateKeyError(String),
+    #[error("private key does not match the certificate")]
+    PrivateKeyMismatch,
+}
+
 impl Ca {
-    async fn validate(&self) -> Result<(), ConfigurationError> {
+    pub(crate) async fn validate(&self) -> Result<(), ConfigurationError> {
         let ca_cert = match self.get_ca_certificate().await {
             Ok(cert) => cert,
             Err(err) => {
-                return Err(ConfigurationError::CaError(format!(
+                return Err(CaError::CaCertificateNotFound(format!(
                     "Failed to read CA certificate: {err}"
-                )))
+                ))
+                .into())
             }
         };
         let ca_pkey = match self.get_ca_private_key().await {
             Ok(pkey) => pkey,
             Err(err) => {
-                return Err(ConfigurationError::CaError(format!(
+                return Err(CaError::CaPrivateKeyNotFound(format!(
                     "Failed to read CA private key: {err}"
-                )))
+                ))
+                .into())
             }
         };
         let ca_pub_key = match ca_cert.public_key() {
             Ok(key) => key,
             Err(err) => {
-                return Err(ConfigurationError::CaError(format!(
+                return Err(CaError::CaPrivateKeyError(format!(
                     "Failed to convert CA private key to PEM: {err}"
-                )))
+                ))
+                .into())
             }
         };
         if ca_pkey.public_eq(&ca_pub_key) {
             Ok(())
         } else {
-            Err(ConfigurationError::CaError(
-                "CA certificate key does not match the CA certificate".to_string(),
-            ))
+            Err(CaError::PrivateKeyMismatch.into())
         }
     }
 
@@ -483,6 +510,10 @@ pub struct Configuration {
 
 #[derive(Error, Debug)]
 pub enum ConfigurationError {
+    #[error("NetworkConfigError error: {0}")]
+    NetworkConfigError(#[from] NetworkConfigError),
+    #[error("CaError error: {0}")]
+    CaError(#[from] CaError),
     #[error("an error occured while trying to deserialize configuration file")]
     DeserializeError(#[from] toml::de::Error),
     #[error("this directory was not found")]
@@ -499,8 +530,12 @@ pub enum ConfigurationError {
     FilterError(String),
     #[error("network error: {0}")]
     NetworkError(String),
-    #[error("ca error: {0}")]
-    CaError(String),
+}
+
+#[derive(Error, Debug)]
+pub enum PrivaxyError {
+    #[error("ConfigurationError: {0}")]
+    ConfigurationError(#[from] ConfigurationError),
 }
 
 impl Configuration {

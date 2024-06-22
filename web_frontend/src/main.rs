@@ -1,3 +1,4 @@
+use serde::Deserialize;
 use yew::functional::*;
 use yew::prelude::*;
 use yew_router::prelude::*;
@@ -12,6 +13,11 @@ mod save_button;
 mod settings;
 mod settings_textarea;
 mod submit_banner;
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ApiError {
+    error: String,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Routable)]
 enum Route {
