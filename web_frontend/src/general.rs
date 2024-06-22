@@ -5,6 +5,11 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
 use yew::{html, Callback, Component, Context, Html};
+use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
+use web_sys::{File, FileReader};
+use openssl::pkey::PKey;
+use openssl::x509::X509;
 
 pub enum Message {
     Load,
@@ -13,6 +18,15 @@ pub enum Message {
     UpdateProxyPort(String),
     UpdateBindAddr(String),
     UpdateWebPort(String),
+    UpdateCaCert(String),
+    UpdateCaKey(String),
+    UploadCaCert(web_sys::File),
+    UploadCaKey(web_sys::File),
+    UpdateTls(bool),
+}
+enum SettingType {
+    Text(String),
+    Checkbox(bool),
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -28,6 +42,7 @@ pub struct NetworkConfig {
     pub tls: bool,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 struct CaConfig {
     private_key_pem: String,
     ca_cert_pem: String,
@@ -48,12 +63,14 @@ struct NetworkSettings {
 
 enum SettingCategories {
     Network(NetworkSettings),
+    Certificate(CaConfig),
     Other,
 }
 
 pub(crate) struct GeneralSettings {
     changes_saved: bool,
     network_settings: Option<NetworkSettings>,
+    ca_config: CaConfig,
     loading: bool,
     save_callback: Callback<()>,
 }
@@ -79,6 +96,10 @@ impl GeneralSettings {
         Self {
             changes_saved: true,
             network_settings: None,
+            ca_config: CaConfig {
+                private_key_pem: String::new(),
+                ca_cert_pem: String::new(),
+            },
             loading: true,
             save_callback: Callback::noop(),
         }
@@ -93,6 +114,10 @@ impl Component for GeneralSettings {
         ctx.link().send_message(Message::Load);
         Self {
             changes_saved: true,
+            ca_config: CaConfig {
+                private_key_pem: String::new(),
+                ca_cert_pem: String::new(),
+            },
             network_settings: None,
             loading: true,
             save_callback: Callback::noop(),
@@ -180,6 +205,35 @@ impl Component for GeneralSettings {
                         _ => Some("Invalid web port".to_string()),
                     };
                 }
+            }
+            Message::UpdateTls(value) => {
+                if let Some(ref mut network_settings) = self.network_settings {
+                    network_settings.current_config.tls = value;
+                }
+            }
+            Message::UpdateCaCert(value) => {
+                    self.ca_config.ca_cert_pem = value;
+            }
+            Message::UpdateCaKey(value) => {
+                    self.ca_config.private_key_pem = value;
+            }
+            Message::UploadCaCert(file) => {
+                let link = ctx.link().clone();
+                read_file(file, Callback::from(move |result: Result<String, String>| {
+                    match result {
+                        Ok(text) => link.send_message(Message::UpdateCaCert(text)),
+                        Err(e) => log::error!("Failed to read CA cert file: {}", e),
+                    }
+                }));
+            }
+            Message::UploadCaKey(file) => {
+                let link = ctx.link().clone();
+                read_file(file, Callback::from(move |result: Result<String, String>| {
+                    match result {
+                        Ok(text) => link.send_message(Message::UpdateCaKey(text)),
+                        Err(e) => log::error!("Failed to read CA key file: {}", e),
+                    }
+                }));
             }
         }
         true
@@ -271,6 +325,33 @@ impl Component for GeneralSettings {
                                     </>
                                 }
                             }
+                            SettingCategories::Certificate(ca_config) => {
+                                html! {
+                                    <>
+                                    { render_certificate_setting(
+                                        "CA Certificate",
+                                        ca_config.ca_cert_pem.clone(),
+                                        ctx.link().callback(|e: InputEvent| {
+                                            let input: web_sys::HtmlTextAreaElement = e.target_unchecked_into();
+                                            Message::UpdateCaCert(input.value())
+                                        }),
+                                        ctx.link().callback(Message::UploadCaCert),
+                                        "Paste or upload the CA Certificate"
+                                    ) }
+                                    { render_certificate_setting(
+                                        "CA Certificate Key",
+                                        ca_config.private_key_pem.clone(),
+                                        ctx.link().callback(|e: InputEvent| {
+                                            let input: web_sys::HtmlTextAreaElement = e.target_unchecked_into();
+                                            Message::UpdateCaKey(input.value())
+                                        }),
+                                        ctx.link().callback(Message::UploadCaKey),
+                                        "Paste or upload the CA Certificate Key"
+                                    ) }
+                                    </>
+                                }
+                            }
+                            
                             SettingCategories::Other => html! {<></>},
                         }}
                     </div>
@@ -297,9 +378,88 @@ impl Component for GeneralSettings {
                 if let Some(network_settings) = &self.network_settings {
                     {render_category("Network", SettingCategories::Network(network_settings.clone()))}
                 } else {
-                <div>{"Loading..."}</div>}
+                    <div>{"Loading..."}</div>
+                }
+                    {render_category("Certificate", SettingCategories::Certificate(self.ca_config.clone()))}
+
             <save_button::SaveButton state={save_button_state} onclick={save_callback} />
             </>
         }
     }
+}
+
+fn render_certificate_setting(
+    setting_name: &str,
+    value: String,
+    oninput: Callback<InputEvent>,
+    onupload: Callback<web_sys::File>,
+    description: &str,
+) -> Html {
+    html! {
+        <div class="mb-4" style="display: flex; flex-direction: column; width: 100%; padding: 2px 0;">
+            <div style="display: flex; align-items: center; width: 100%;">
+                <div class="text-gray-500" style="width: 200px; text-align: left; padding-right: 4px;">{ setting_name }</div>
+                <div style="flex-grow: 1;">
+                    <textarea
+                        value={value}
+                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                        oninput={oninput}
+                    />
+                </div>
+            </div>
+            <div class="ml-200" style="margin-left: 200px;">
+                <input
+                    type="file"
+                    onchange={Callback::from(move |e: Event| {
+                        let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+                        if let Some(file) = input.files().and_then(|files| files.get(0)) {
+                            onupload.emit(file);
+                        }
+                    })}
+                />
+                <p class="text-gray-400 text-sm mt-1">{description}</p>
+            </div>
+        </div>
+    }
+}
+
+use std::rc::Rc;
+use std::cell::RefCell;
+
+fn read_file(file: File, callback: Callback<Result<String, String>>) {
+    let file_reader = FileReader::new().unwrap();
+    let callback = Rc::new(RefCell::new(callback));
+
+    let onload = {
+        let callback = callback.clone();
+        Closure::wrap(Box::new(move |event: web_sys::Event| {
+            let target = event.target().unwrap();
+            let file_reader: FileReader = target.dyn_into().unwrap();
+            match file_reader.result() {
+                Ok(result) => {
+                    if let Some(text) = result.as_string() {
+                        callback.borrow().emit(Ok(text));
+                    } else {
+                        callback.borrow().emit(Err("Failed to convert result to string".to_string()));
+                    }
+                }
+                Err(_) => callback.borrow().emit(Err("Failed to get result from FileReader".to_string())),
+            }
+        }) as Box<dyn FnMut(_)>)
+    };
+
+    let onerror = {
+        let callback = callback.clone();
+        Closure::wrap(Box::new(move |_error: web_sys::Event| {
+            callback.borrow().emit(Err("Error reading file".to_string()));
+        }) as Box<dyn FnMut(_)>)
+    };
+
+    file_reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+    file_reader.set_onerror(Some(onerror.as_ref().unchecked_ref()));
+
+    file_reader.read_as_text(&file).expect("Could not read file");
+
+    onload.forget();
+    onerror.forget();
 }
