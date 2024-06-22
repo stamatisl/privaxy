@@ -192,14 +192,14 @@ impl Component for GeneralSettings {
                               error: Option<&String>,
                               description: &str| {
             html! {
-                <div class="mb-4" style="display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 2px 0;">
+                <div class="mb-4" style="display: flex; flex-direction: column; width: 100%; padding: 2px 0;">
                     <div style="display: flex; align-items: center; width: 100%;">
-                        <div class="text-gray-500" style="width: 200px; text-align: right; padding-right: 4px;">{ setting_name }</div>
+                        <div class="text-gray-500" style="width: 200px; text-align: left; padding-right: 4px;">{ setting_name }</div>
                         <div style="flex-grow: 1;">
                             <input value={setting_value} class="shadow appearance-none border rounded w-80 py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" type="text" oninput={oninput} />
                         </div>
                     </div>
-                    <div style="width: calc(100% - 200px); margin-left: 200px;">
+                    <div style="margin-left: 200px;">
                         <p class="text-gray-400 text-sm">{description}</p>
                         if let Some(error_msg) = error {
                             <p class="text-red-500 text-xs italic">{error_msg}</p>
@@ -214,14 +214,14 @@ impl Component for GeneralSettings {
                                       description: &str| {
             let checkbox_callback = ctx.link().callback(|_| Message::Load);
             html! {
-                <div class="mb-4" style="display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 2px 0;">
+                <div class="mb-4" style="display: flex; flex-direction: column; width: 100%; padding: 2px 0;">
                     <div style="display: flex; align-items: center; width: 100%;">
-                        <div class="text-gray-500" style="width: 200px; text-align: right; padding-right: 4px;">{ setting_name }</div>
+                        <div class="text-gray-500" style="width: 200px; text-align: left; padding-right: 4px;">{ setting_name }</div>
                         <div style="flex-grow: 1;">
                             <input checked={setting_value} onchange={checkbox_callback} type="checkbox" class="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300 rounded" />
                         </div>
                     </div>
-                    <div style="width: calc(100% - 200px); margin-left: 200px;">
+                    <div style="margin-left: 200px;">
                         <p class="text-gray-400 text-sm">{description}</p>
                     </div>
                 </div>
@@ -230,8 +230,8 @@ impl Component for GeneralSettings {
 
         let render_category = |category_name: &str, category_settings: SettingCategories| {
             html! {
-                <fieldset class="mb-8" style="width: 100%;">
-                    <legend class="text-lg font-medium text-gray-900">{category_name}</legend>
+            <fieldset class="mb-8" style="width: 100%;">
+                <legend class="text-lg font-medium text-gray-900">{category_name}</legend>
                     <div class="mt-4 border-t border-b border-gray-200 divide-y divide-gray-200">
                         { match category_settings {
                             SettingCategories::Network(network_settings) => {
