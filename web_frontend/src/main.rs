@@ -15,7 +15,7 @@ mod settings;
 mod settings_textarea;
 mod submit_banner;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub(crate) struct ApiError {
     error: String,
 }
@@ -128,7 +128,7 @@ fn app() -> Html {
 }
 
 fn set_title(title: &str) {
-    gloo_utils::document().set_title(&format!("{} | Privaxy", title));
+    gloo_utils::document().set_title(&format!("Privaxy | {}", title));
 }
 
 fn main() {

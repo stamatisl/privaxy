@@ -2,11 +2,9 @@ use crate::proxy::exclusions::LocalExclusionStore;
 use crate::statistics::Statistics;
 use crate::WEBAPP_FRONTEND_DIR;
 use crate::{blocker::BlockingDisabledStore, configuration::Configuration};
-use openssl::pkey::{PKey, Private};
-use openssl::x509::X509;
 use serde::Serialize;
-use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio::sync::Notify;
 use tokio::sync::{broadcast, mpsc::Sender};
 use warp::filters::BoxedFilter;
 use warp::http::Response;
@@ -26,25 +24,23 @@ pub(crate) mod statistics;
 pub(crate) struct ApiError {
     error: String,
 }
-
-pub(crate) fn start_frontend(
+pub(crate) fn get_frontend(
     events_sender: broadcast::Sender<events::Event>,
     statistics: Statistics,
-    blocking_disabled_store: BlockingDisabledStore,
-    configuration_updater_sender: Sender<Configuration>,
-    configuration_save_lock: Arc<tokio::sync::Mutex<()>>,
-    local_exclusions_store: LocalExclusionStore,
-    bind: SocketAddr,
-    tls_cert: Option<X509>,
-    tls_key: Option<PKey<Private>>,
-    use_tls: bool,
-) {
+    blocking_disabled_store: &BlockingDisabledStore,
+    configuration_updater_sender: &Sender<Configuration>,
+    configuration_save_lock: &Arc<tokio::sync::Mutex<()>>,
+    local_exclusions_store: &LocalExclusionStore,
+    notify_reload: Arc<Notify>,
+) -> BoxedFilter<(impl warp::Reply,)> {
     let static_files_routes = warp::get().and(warp::path::tail()).map(move |tail: Tail| {
         let tail_str = tail.as_str();
+        log::info!("Static file request for: {}", tail_str);
 
         let file_contents = match WEBAPP_FRONTEND_DIR.get_file(tail_str) {
             Some(file) => file.contents().to_vec(),
             None => {
+                log::warn!("File not found: {}, serving index.html", tail_str);
                 let index_html = WEBAPP_FRONTEND_DIR.get_file("index.html").unwrap();
                 index_html.contents().to_vec()
             }
@@ -65,6 +61,7 @@ pub(crate) fn start_frontend(
             http::header::CONTENT_LENGTH,
             http::header::DATE,
         ]);
+
     let http_client = reqwest::Client::new();
 
     let api_routes = create_api_routes(
@@ -75,48 +72,49 @@ pub(crate) fn start_frontend(
         configuration_save_lock,
         local_exclusions_store,
         http_client,
-    )
-    .with(cors);
-    let combined_routes = api_routes.or(static_files_routes);
+        notify_reload,
+    );
 
-    if use_tls {
-        let key = tls_key.unwrap();
-        let cert = tls_cert.unwrap();
-        let combined_routes_with_hsts = combined_routes.map(|reply| {
-            warp::reply::with_header(
-                reply,
-                "Strict-Transport-Security",
-                "max-age=31536000; includeSubDomains; preload",
-            )
-        });
+    api_routes.or(static_files_routes).with(cors).boxed()
+}
 
-        tokio::spawn(async move {
-            warp::serve(combined_routes_with_hsts)
-                .tls()
-                .cert(cert.to_pem().unwrap())
-                .key(key.private_key_to_pem_pkcs8().unwrap())
-                .run(bind)
-                .await;
-        });
-    } else {
-        tokio::spawn(async move {
-            warp::serve(combined_routes).run(bind).await;
-        });
-    }
+fn create_static_routes() -> BoxedFilter<(impl warp::Reply,)> {
+    warp::get()
+        .and(warp::path::tail())
+        .map(move |tail: Tail| {
+            let tail_str = tail.as_str();
+
+            let file_contents = match WEBAPP_FRONTEND_DIR.get_file(tail_str) {
+                Some(file) => file.contents().to_vec(),
+                None => {
+                    let index_html = WEBAPP_FRONTEND_DIR.get_file("index.html").unwrap();
+                    index_html.contents().to_vec()
+                }
+            };
+
+            let mime = mime_guess::from_path(tail_str).first_raw().unwrap_or("");
+
+            Response::builder()
+                .header(http::header::CONTENT_TYPE, mime)
+                .body(file_contents)
+        })
+        .boxed()
 }
 
 fn create_api_routes(
     events_sender: broadcast::Sender<events::Event>,
     statistics: Statistics,
-    blocking_disabled_store: BlockingDisabledStore,
-    configuration_updater_sender: Sender<Configuration>,
-    configuration_save_lock: Arc<tokio::sync::Mutex<()>>,
-    local_exclusions_store: LocalExclusionStore,
+    blocking_disabled_store: &BlockingDisabledStore,
+    configuration_updater_sender: &Sender<Configuration>,
+    configuration_save_lock: &Arc<tokio::sync::Mutex<()>>,
+    local_exclusions_store: &LocalExclusionStore,
     http_client: reqwest::Client,
+    notify_reload: Arc<Notify>,
 ) -> BoxedFilter<(impl Reply,)> {
     let def_headers =
         warp::filters::reply::default_header(http::header::CONTENT_TYPE, "application/json");
     let api_path = warp::path("api");
+
     let events_route = warp::path("events")
         .and(warp::ws())
         .map(move |ws: warp::ws::Ws| {
@@ -136,18 +134,22 @@ fn create_api_routes(
         configuration_save_lock.clone(),
         http_client.clone(),
     ));
+
     let custom_filters_route = warp::path("custom-filters").and(custom_filters::create_routes(
         configuration_updater_sender.clone(),
         configuration_save_lock.clone(),
     ));
+
     let exclusions_route = warp::path("exclusions").and(exclusions::create_routes(
         configuration_updater_sender.clone(),
         configuration_save_lock.clone(),
         local_exclusions_store.clone(),
     ));
+
     let settings_route = warp::path("settings").and(settings::create_routes(
         configuration_updater_sender.clone(),
         configuration_save_lock.clone(),
+        notify_reload.clone(),
     ));
 
     let blocking_enabled_route = warp::path("blocking-enabled").and(
@@ -161,6 +163,7 @@ fn create_api_routes(
     let not_found = warp::path::tail()
         .map(move |tail: Tail| {
             let tail_str = tail.as_str();
+            log::warn!("Path not found: /api/{}", tail_str);
             Response::builder()
                 .status(http::StatusCode::NOT_FOUND)
                 .body(

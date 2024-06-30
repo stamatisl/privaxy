@@ -1,6 +1,8 @@
 use crate::button::ButtonState;
 use crate::button::{get_css, ButtonColor};
-use crate::save_button;
+use crate::failure_banner;
+use crate::success_banner;
+use crate::{save_button, ApiError};
 use gloo_utils::format::JsValueSerdeExt;
 use regex::Regex;
 use reqwasm::http::Request;
@@ -32,6 +34,10 @@ pub enum Message {
     ValidateCertificates,
     ValidationFailed(String),
     UpdateTls(bool),
+    SaveSuccess,
+    SaveFailed(ApiError),
+    AcknowledgeError,
+    AcknowledgeSuccess,
 }
 enum SettingType {
     Text(String),
@@ -72,10 +78,42 @@ struct NetworkSettings {
     raw_proxy_port: String,
     raw_bind_addr: String,
     raw_web_port: String,
-    save_callback: Callback<()>,
     proxy_port_error: Option<String>,
     bind_addr_error: Option<String>,
     web_port_error: Option<String>,
+}
+
+impl NetworkSettings {
+    fn validate(&self) -> bool {
+        self.proxy_port_error.is_none()
+            && self.bind_addr_error.is_none()
+            && self.web_port_error.is_none()
+    }
+    fn config_has_changed(&self) -> bool {
+        self.current_config.clone() != self.remote_config
+    }
+    async fn save(&mut self) -> Result<(), ApiError> {
+        let body = serde_json::to_string(&self.current_config).unwrap();
+        let req = reqwasm::http::Request::put("/api/settings/network")
+            .body(body)
+            .header("Content-Type", "application/json");
+        match req.send().await {
+            Ok(resp) => {
+                if resp.ok() {
+                    return Ok(());
+                } else {
+                    log::error!("Failed to save network config");
+                    return Err(resp.json::<ApiError>().await.unwrap());
+                }
+            }
+            Err(err) => {
+                log::error!("{}", err);
+                Err(ApiError {
+                    error: format!("{:?}", err),
+                })
+            }
+        }
+    }
 }
 
 enum SettingCategories {
@@ -90,6 +128,9 @@ pub(crate) struct GeneralSettings {
     ca_config: CaConfig,
     loading: bool,
     save_callback: Callback<()>,
+    show_error: bool,
+    show_success: bool,
+    err_msg: String,
 }
 
 impl GeneralSettings {
@@ -105,6 +146,12 @@ impl GeneralSettings {
             }
         };
         net_changed
+    }
+    fn validate(&self) -> bool {
+        match &self.network_settings {
+            None => false,
+            Some(network_settings) => network_settings.validate(),
+        }
     }
 }
 
@@ -125,6 +172,9 @@ impl Component for GeneralSettings {
             network_settings: None,
             loading: true,
             save_callback: Callback::noop(),
+            show_success: false,
+            show_error: false,
+            err_msg: String::new(),
         }
     }
 
@@ -156,7 +206,50 @@ impl Component for GeneralSettings {
                 self.changes_saved = true;
             }
             Message::Save => {
+                let link = ctx.link().clone();
+                let network_settings = self.network_settings.clone();
+                spawn_local(async move {
+                    if let Some(mut network_settings) = network_settings {
+                        if network_settings.config_has_changed() {
+                            match network_settings.save().await {
+                                Ok(_) => {
+                                    link.send_message(Message::NetworkLoadSuccess(
+                                        network_settings.current_config,
+                                    ));
+                                }
+                                Err(err) => {
+                                    log::error!("Failed to save network config: {:?}", err);
+                                    link.send_message(Message::SaveFailed(err.clone()));
+                                    return;
+                                }
+                            }
+                        } else {
+                            link.send_message(Message::NetworkLoadSuccess(
+                                network_settings.remote_config,
+                            ));
+                        }
+                    }
+                    link.send_message(Message::SaveSuccess);
+                });
+            }
+            Message::SaveFailed(err) => {
+                let error_msg = err.clone().error.to_string();
+                self.changes_saved = false;
+                self.show_success = false;
+                self.show_error = true;
+                self.err_msg = error_msg;
+            }
+            Message::SaveSuccess => {
                 self.changes_saved = true;
+                self.show_success = true;
+                self.show_error = false;
+                self.err_msg = String::new();
+            }
+            Message::AcknowledgeSuccess => {
+                self.show_success = false;
+            }
+            Message::AcknowledgeError => {
+                self.show_error = false;
             }
             Message::NetworkLoadSuccess(network_config) => {
                 self.network_settings = {
@@ -166,7 +259,6 @@ impl Component for GeneralSettings {
                         raw_proxy_port: network_config.proxy_port.to_string(),
                         raw_bind_addr: network_config.bind_addr.clone(),
                         raw_web_port: network_config.web_port.to_string(),
-                        save_callback: ctx.link().callback(|_| Message::Save),
                         proxy_port_error: None,
                         bind_addr_error: None,
                         web_port_error: None,
@@ -405,8 +497,7 @@ impl Component for GeneralSettings {
                 </fieldset>
             }
         };
-
-        let save_button_state = if self.config_has_changed() {
+        let save_button_state = if self.config_has_changed() && self.validate() {
             ButtonState::Enabled
         } else {
             ButtonState::Disabled
@@ -418,10 +509,25 @@ impl Component for GeneralSettings {
                 <h1 class="text-2xl font-bold text-gray-900">{ "General Settings" }</h1>
             </div>
         };
-
+        let success_banner_html = if self.show_success {
+            success_banner!(true, ctx.link().callback(|_| Message::AcknowledgeSuccess))
+        } else {
+            html! {}
+        };
+        let failure_banner_html = if self.show_error {
+            failure_banner!(
+                true,
+                ctx.link().callback(|_| Message::AcknowledgeError),
+                self.err_msg.clone()
+            )
+        } else {
+            html! {}
+        };
         html! {
             <>
             { title }
+            { success_banner_html }
+            { failure_banner_html }
                 if let Some(network_settings) = &self.network_settings {
                     {render_category("Network", SettingCategories::Network(network_settings.clone()))}
                 } else {
