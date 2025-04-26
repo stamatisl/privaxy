@@ -110,24 +110,8 @@ impl DefaultFilters {
         }
     }
 
-    // fn get_default_filters() -> Vec<DefaultFilter> {
-    //     vec![
-    //         ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters.txt", "uBlock filters", FilterGroup::Default, true),
-    //         ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-mobile.txt", "uBlock mobile filters", FilterGroup::Default, true),
-    //         ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/badware.txt", "uBlock filters - Badware risks", FilterGroup::Default, true),
-    //         ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/privacy.txt", "uBlock filters - Privacy", FilterGroup::Default, true),
-    //         ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/resource-abuse.txt", "uBlock filters - Resource abuse", FilterGroup::Default, true),
-    //         ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/unbreak.txt", "uBlock filters - Unbreak", FilterGroup::Default, true),
-    //         ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/quick-fixes.txt", "uBlock filters - Quick Fixes", FilterGroup::Default, true),
-    //     ]
-    //     .into_iter()
-    //     .filter_map(|(url, title, group, enabled_by_default)| Self::parse_filter(url, title, group, enabled_by_default))
-    //     .collect()
-    // }
-
     fn get_default_filters() -> Vec<DefaultFilter> {
         vec![
-            // General
             ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters.txt", "uBlock filters", FilterGroup::Default, true),
             ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-general.txt", "uBlock filters – General", FilterGroup::Default, true),
             ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-mobile.txt", "uBlock filters – Mobile", FilterGroup::Default, true),
@@ -139,35 +123,22 @@ impl DefaultFilters {
             ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-2025.txt", "uBlock filters – 2025", FilterGroup::Default, true),
             ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/legacy.txt", "uBlock filters – Legacy", FilterGroup::Default, true),
             ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/ubol-filters.txt", "uBlock filters – uBOL Filters", FilterGroup::Default, true),
-    
-            // Annoyances
-            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/annoyances.txt", "uBlock filters – Annoyances", FilterGroup::Annoyances, true),
-            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/annoyances-cookies.txt", "uBlock filters – Annoyances: Cookies", FilterGroup::Annoyances, true),
-            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/annoyances-others.txt", "uBlock filters – Annoyances: Others", FilterGroup::Annoyances, true),
-    
-            // Security
-            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/badware.txt", "uBlock filters – Badware risks", FilterGroup::Security, true),
-            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/badlists.txt", "uBlock filters – Badlists", FilterGroup::Security, true),
-            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/lan-block.txt", "uBlock filters – LAN block", FilterGroup::Security, true),
-            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/ubo-link-shorteners.txt", "uBlock filters – uBO Link Shorteners", FilterGroup::Security, true),
-    
-            // Privacy
-            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/privacy.txt", "uBlock filters – Privacy", FilterGroup::Privacy, true),
-    
-            // Performance
-            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/resource-abuse.txt", "uBlock filters – Resource abuse", FilterGroup::Performance, true),
-    
-            // Compatibility
-            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/unbreak.txt", "uBlock filters – Unbreak", FilterGroup::Compatibility, true),
-    
-            // Quick Fixes
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/annoyances.txt", "uBlock filters – Annoyances", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/annoyances-cookies.txt", "uBlock filters – Annoyances: Cookies", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/annoyances-others.txt", "uBlock filters – Annoyances: Others", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/badware.txt", "uBlock filters – Badware risks", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/badlists.txt", "uBlock filters – Badlists", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/lan-block.txt", "uBlock filters – LAN block", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/ubo-link-shorteners.txt", "uBlock filters – uBO Link Shorteners", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/privacy.txt", "uBlock filters – Privacy", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/resource-abuse.txt", "uBlock filters – Resource abuse", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/unbreak.txt", "uBlock filters – Unbreak", FilterGroup::Default, true),
             ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/quick-fixes.txt", "uBlock filters – Quick fixes", FilterGroup::Default, true),
         ]
         .into_iter()
         .filter_map(|(url, title, group, enabled_by_default)| Self::parse_filter(url, title, group, enabled_by_default))
         .collect()
-    }
-    
+    }   
 
     fn get_ads_filters() -> Vec<DefaultFilter> {
         vec![
@@ -175,19 +146,19 @@ impl DefaultFilters {
                 "https://filters.adtidy.org/extension/ublock/filters/2_without_easylist.txt",
                 "AdGuard Base",
                 FilterGroup::Ads,
-                false,
+                true,
             ),
             (
                 "https://filters.adtidy.org/extension/ublock/filters/11.txt",
                 "AdGuard Mobile Ads",
                 FilterGroup::Ads,
-                false,
+                true,
             ),
             (
                 "https://easylist.to/easylist/easylist.txt",
                 "EasyList",
                 FilterGroup::Ads,
-                true,
+                false,
             ),
         ]
         .into_iter()
@@ -223,6 +194,30 @@ impl DefaultFilters {
                 FilterGroup::Malware,
                 false,
             ),
+            (
+                "https://raw.githubusercontent.com/stephenhawk8054/openphish-adblock/refs/heads/main/filters_init_domains.txt",
+                "OpenPhish Adblock Domains",
+                FilterGroup::Malware,
+                true,
+            ),
+            (
+                "https://raw.githubusercontent.com/stephenhawk8054/openphish-adblock/refs/heads/main/filters_init.txt",
+                "OpenPhish Adblock Full",
+                FilterGroup::Malware,
+                true,
+            ),
+            (
+                "https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-agh-online.txt",
+                "Malware Filter - URLHaus Online",
+                FilterGroup::Malware,
+                true,
+            ),
+            (
+                "https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-agh.txt",
+                "Malware Filter - URLHaus",
+                FilterGroup::Malware,
+                true,
+            ),
         ]
         .into_iter()
         .filter_map(|(url, title, group, enabled_by_default)| {
@@ -230,7 +225,7 @@ impl DefaultFilters {
         })
         .collect()
     }
-
+    
     fn get_social_filters() -> Vec<DefaultFilter> {
         vec![
             ("https://filters.adtidy.org/extension/ublock/filters/14.txt", "AdGuard Annoyances", FilterGroup::Social, false),

@@ -819,15 +819,8 @@ function objectPruneFn(
     rawNeedlePaths,
     stackNeedleDetails = { matchAll: true },
     extraArgs = {}
-)
-
-{
+) {
     if ( typeof rawPrunePaths !== 'string' ) { return; }
-    let deepMode = false;
-    if (rawPrunePaths.startsWith('deep:')) {
-    deepMode = true;
-    rawPrunePaths = rawPrunePaths.slice('deep:'.length);
-    }
 
     const prunePaths = rawPrunePaths !== ''
         ? rawPrunePaths.split(/ +/)
@@ -853,16 +846,8 @@ function objectPruneFn(
     if ( prunePaths.length === 0 ) { return; }
     let outcome = 'nomatch';
     if ( objectPruneFn.mustProcess(obj, needlePaths) ) {
-        if (deepMode) {
-            deepPruneObject(obj, prunePaths);
-            outcome = 'match';
-        } else {
-            for (const path of prunePaths) {
-                if (objectFindOwnerFn(obj, path, true)) {
-                    outcome = 'match';
-                }
-            }
-        }
+        deepPruneObject(obj, prunePaths);
+        outcome = 'match';
     }
     if ( outcome === 'match' ) { return obj; }
 }
