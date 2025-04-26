@@ -781,7 +781,24 @@ function replaceNodeTextFn(
 }
 
 /******************************************************************************/
+function deepPruneObject(obj, keysToRemove) {
+    if (obj == null) return;  // add this
+    if (Array.isArray(obj)) {
+        for (const item of obj) {
+            deepPruneObject(item, keysToRemove);
+        }
+    } else if (typeof obj === 'object') {
+        for (const key of Object.keys(obj)) {
+            if (keysToRemove.includes(key)) {
+                delete obj[key];
+            } else {
+                deepPruneObject(obj[key], keysToRemove);
+            }
+        }
+    }
+}
 
+/******************************************************************************/
 builtinScriptlets.push({
     name: 'object-prune.fn',
     fn: objectPruneFn,
@@ -802,8 +819,16 @@ function objectPruneFn(
     rawNeedlePaths,
     stackNeedleDetails = { matchAll: true },
     extraArgs = {}
-) {
+)
+
+{
     if ( typeof rawPrunePaths !== 'string' ) { return; }
+    let deepMode = false;
+    if (rawPrunePaths.startsWith('deep:')) {
+    deepMode = true;
+    rawPrunePaths = rawPrunePaths.slice('deep:'.length);
+    }
+
     const prunePaths = rawPrunePaths !== ''
         ? rawPrunePaths.split(/ +/)
         : [];
@@ -828,9 +853,14 @@ function objectPruneFn(
     if ( prunePaths.length === 0 ) { return; }
     let outcome = 'nomatch';
     if ( objectPruneFn.mustProcess(obj, needlePaths) ) {
-        for ( const path of prunePaths ) {
-            if ( objectFindOwnerFn(obj, path, true) ) {
-                outcome = 'match';
+        if (deepMode) {
+            deepPruneObject(obj, prunePaths);
+            outcome = 'match';
+        } else {
+            for (const path of prunePaths) {
+                if (objectFindOwnerFn(obj, path, true)) {
+                    outcome = 'match';
+                }
             }
         }
     }
