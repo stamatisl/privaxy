@@ -16,6 +16,10 @@ pub enum FilterGroup {
     Privacy,
     Malware,
     Social,
+    Annoyances,
+    Performance,
+    Compatibility,
+    Security,
 }
 
 impl ToString for FilterGroup {
@@ -27,6 +31,10 @@ impl ToString for FilterGroup {
             FilterGroup::Privacy => "privacy",
             FilterGroup::Malware => "malware",
             FilterGroup::Social => "social",
+            FilterGroup::Annoyances => "annoyances",
+            FilterGroup::Performance => "performance",
+            FilterGroup::Compatibility => "compatibility",
+            FilterGroup::Security => "security",
         }
         .to_string()
     }
@@ -102,20 +110,64 @@ impl DefaultFilters {
         }
     }
 
+    // fn get_default_filters() -> Vec<DefaultFilter> {
+    //     vec![
+    //         ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters.txt", "uBlock filters", FilterGroup::Default, true),
+    //         ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-mobile.txt", "uBlock mobile filters", FilterGroup::Default, true),
+    //         ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/badware.txt", "uBlock filters - Badware risks", FilterGroup::Default, true),
+    //         ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/privacy.txt", "uBlock filters - Privacy", FilterGroup::Default, true),
+    //         ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/resource-abuse.txt", "uBlock filters - Resource abuse", FilterGroup::Default, true),
+    //         ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/unbreak.txt", "uBlock filters - Unbreak", FilterGroup::Default, true),
+    //         ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/quick-fixes.txt", "uBlock filters - Quick Fixes", FilterGroup::Default, true),
+    //     ]
+    //     .into_iter()
+    //     .filter_map(|(url, title, group, enabled_by_default)| Self::parse_filter(url, title, group, enabled_by_default))
+    //     .collect()
+    // }
+
     fn get_default_filters() -> Vec<DefaultFilter> {
         vec![
+            // General
             ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters.txt", "uBlock filters", FilterGroup::Default, true),
-            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-mobile.txt", "uBlock mobile filters", FilterGroup::Default, true),
-            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/badware.txt", "uBlock filters - Badware risks", FilterGroup::Default, true),
-            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/privacy.txt", "uBlock filters - Privacy", FilterGroup::Default, true),
-            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/resource-abuse.txt", "uBlock filters - Resource abuse", FilterGroup::Default, true),
-            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/unbreak.txt", "uBlock filters - Unbreak", FilterGroup::Default, true),
-            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/quick-fixes.txt", "uBlock filters - Quick Fixes", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-general.txt", "uBlock filters – General", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-mobile.txt", "uBlock filters – Mobile", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-2020.txt", "uBlock filters – 2020", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-2021.txt", "uBlock filters – 2021", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-2022.txt", "uBlock filters – 2022", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-2023.txt", "uBlock filters – 2023", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-2024.txt", "uBlock filters – 2024", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters-2025.txt", "uBlock filters – 2025", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/legacy.txt", "uBlock filters – Legacy", FilterGroup::Default, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/ubol-filters.txt", "uBlock filters – uBOL Filters", FilterGroup::Default, true),
+    
+            // Annoyances
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/annoyances.txt", "uBlock filters – Annoyances", FilterGroup::Annoyances, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/annoyances-cookies.txt", "uBlock filters – Annoyances: Cookies", FilterGroup::Annoyances, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/annoyances-others.txt", "uBlock filters – Annoyances: Others", FilterGroup::Annoyances, true),
+    
+            // Security
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/badware.txt", "uBlock filters – Badware risks", FilterGroup::Security, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/badlists.txt", "uBlock filters – Badlists", FilterGroup::Security, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/lan-block.txt", "uBlock filters – LAN block", FilterGroup::Security, true),
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/ubo-link-shorteners.txt", "uBlock filters – uBO Link Shorteners", FilterGroup::Security, true),
+    
+            // Privacy
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/privacy.txt", "uBlock filters – Privacy", FilterGroup::Privacy, true),
+    
+            // Performance
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/resource-abuse.txt", "uBlock filters – Resource abuse", FilterGroup::Performance, true),
+    
+            // Compatibility
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/unbreak.txt", "uBlock filters – Unbreak", FilterGroup::Compatibility, true),
+    
+            // Quick Fixes
+            ("https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/quick-fixes.txt", "uBlock filters – Quick fixes", FilterGroup::Default, true),
         ]
         .into_iter()
         .filter_map(|(url, title, group, enabled_by_default)| Self::parse_filter(url, title, group, enabled_by_default))
         .collect()
     }
+    
 
     fn get_ads_filters() -> Vec<DefaultFilter> {
         vec![
