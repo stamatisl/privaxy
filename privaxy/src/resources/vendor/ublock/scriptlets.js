@@ -1261,54 +1261,65 @@ function jsonPruneFetchResponseFn(
     const applyHandler = function(target, thisArg, args) {
         const fetchPromise = Reflect.apply(target, thisArg, args);
         let outcome = logall ? 'nomatch' : 'match';
-        if ( propNeedles.size !== 0 ) {
+    
+        if (propNeedles.size !== 0) {
             const objs = [ args[0] instanceof Object ? args[0] : { url: args[0] } ];
-            if ( objs[0] instanceof Request ) {
+            if (objs[0] instanceof Request) {
                 try {
                     objs[0] = safe.Request_clone.call(objs[0]);
-                } catch(ex) {
+                } catch (ex) {
                     safe.uboErr(logPrefix, 'Error:', ex);
                 }
             }
-            if ( args[1] instanceof Object ) {
+            if (args[1] instanceof Object) {
                 objs.push(args[1]);
             }
-            if ( matchObjectProperties(propNeedles, ...objs) === false ) {
+            if (matchObjectProperties(propNeedles, ...objs) === false) {
                 outcome = 'nomatch';
             }
         }
-        if ( logall === false && outcome === 'nomatch' ) { return fetchPromise; }
-        if ( safe.logLevel > 1 && outcome !== 'nomatch' && propNeedles.size !== 0 ) {
+    
+        if (logall === false && outcome === 'nomatch') {
+            return fetchPromise;
+        }
+    
+        if (safe.logLevel > 1 && outcome !== 'nomatch' && propNeedles.size !== 0) {
             safe.uboLog(logPrefix, `Matched optional "propsToMatch"\n${extraArgs.propsToMatch}`);
         }
+    
         return fetchPromise.then(responseBefore => {
-            const response = responseBefore.clone();
-            return response.json().then(objBefore => {
-                if ( typeof objBefore !== 'object' ) { return responseBefore; }
-                if ( logall ) {
-                    safe.uboLog(logPrefix, safe.JSON_stringify(objBefore, null, 2));
+            const clonedResponse = responseBefore.clone();
+            return clonedResponse.text().then(text => {
+                let obj;
+                try {
+                    obj = safe.JSON_parse(text);
+                } catch (e) {
+                    safe.uboErr(logPrefix, 'Failed to parse JSON:', e);
                     return responseBefore;
                 }
-                const objAfter = objectPruneFn(
-                    objBefore,
-                    rawPrunePaths,
-                    rawNeedlePaths,
-                    stackNeedle,
-                    extraArgs
-                );
-                if ( typeof objAfter !== 'object' ) { return responseBefore; }
-                safe.uboLog(logPrefix, 'Pruned');
-                const responseAfter = Response.json(objAfter, {
+    
+                if (typeof obj !== 'object' || obj === null) {
+                    return responseBefore;
+                }
+    
+                deepPruneObject(obj, prunePaths);
+    
+                const prunedText = safe.JSON_stringify(obj);
+    
+                const responseAfter = new Response(prunedText, {
                     status: responseBefore.status,
                     statusText: responseBefore.statusText,
                     headers: responseBefore.headers,
                 });
+    
                 Object.defineProperties(responseAfter, {
                     ok: { value: responseBefore.ok },
                     redirected: { value: responseBefore.redirected },
                     type: { value: responseBefore.type },
                     url: { value: responseBefore.url },
                 });
+    
+                safe.uboLog(logPrefix, 'Successfully pruned JSON fields.');
                 return responseAfter;
             }).catch(reason => {
                 safe.uboErr(logPrefix, 'Error:', reason);
