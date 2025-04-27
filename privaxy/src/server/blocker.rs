@@ -1,6 +1,9 @@
 use crate::blocker_utils::{
-    build_resource_from_file_contents, read_redirectable_resource_mapping, read_template_resources,
+    build_resource_from_file_contents, 
+    read_redirectable_resource_mapping, 
+    ResourceProperties
 };
+
 use adblock::blocker::BlockerResult as AdblockerBlockerResult;
 use adblock::lists::FilterSet;
 use adblock::request::Request;
@@ -75,9 +78,27 @@ pub struct Blocker {
 
 lazy_static! {
     static ref ADBLOCKING_RESOURCES: Vec<Resource> = {
-        let mut resources =
-            read_template_resources(include_str!("../resources/vendor/ublock/scriptlets.js"));
+        let mut resources = Vec::new();
 
+        // Include all scriptlet files (one by one)
+        static SCRIPTLET_DIR: Dir = include_dir!(
+            "$CARGO_MANIFEST_DIR/src/resources/vendor/ublock/scriptlet/"
+        );
+
+        for file in SCRIPTLET_DIR.files() {
+            let name = file.path().file_name().unwrap().to_string_lossy();
+            let contents = file.contents();
+            resources.push(build_resource_from_file_contents(
+                contents,
+                &ResourceProperties {
+                    name: name.into_owned(),
+                    alias: Vec::new(),
+                    data: None,
+                },
+            ));
+        }
+
+        // Add redirectable resources
         static WEB_ACCESSIBLE_RESOURCES: Dir = include_dir!(
             "$CARGO_MANIFEST_DIR/src/resources/vendor/ublock/web_accessible_resources/"
         );
@@ -89,9 +110,7 @@ lazy_static! {
         resources.extend(resource_properties.iter().filter_map(|resource_info| {
             WEB_ACCESSIBLE_RESOURCES
                 .get_file(&resource_info.name)
-                .map(|resource| {
-                    build_resource_from_file_contents(resource.contents(), resource_info)
-                })
+                .map(|resource| build_resource_from_file_contents(resource.contents(), resource_info))
         }));
 
         resources
